@@ -177,8 +177,9 @@ export function App({ client }: AppProps) {
         timestamp: Date.now(),
       };
 
+      const assistantId = `assistant-${Date.now()}`;
       const assistantMsg: ChatMessage = {
-        id: `assistant-${Date.now()}`,
+        id: assistantId,
         role: "assistant",
         content: "",
         timestamp: Date.now(),
@@ -191,46 +192,34 @@ export function App({ client }: AppProps) {
       try {
         const result = await client.ask(text, {
           onStream: (chunk) => {
-            setMessages((prev) => {
-              const updated = [...prev];
-              const last = updated[updated.length - 1];
-              if (last && last.role === "assistant") {
-                updated[updated.length - 1] = {
-                  ...last,
-                  content: last.content + chunk,
-                };
-              }
-              return updated;
-            });
+            // Find assistant message by ID, not position — agent events
+            // may be inserted between the assistant message and new chunks
+            setMessages((prev) =>
+              prev.map((m) =>
+                m.id === assistantId
+                  ? { ...m, content: m.content + chunk }
+                  : m,
+              ),
+            );
           },
         });
 
-        // Finalize: use result.output as fallback if streaming didn't deliver
-        setMessages((prev) => {
-          const updated = [...prev];
-          const last = updated[updated.length - 1];
-          if (last && last.role === "assistant") {
-            updated[updated.length - 1] = {
-              ...last,
-              content: last.content || result.output || "(no response)",
-              isStreaming: false,
-            };
-          }
-          return updated;
-        });
+        // Finalize
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === assistantId
+              ? { ...m, content: m.content || result.output || "(no response)", isStreaming: false }
+              : m,
+          ),
+        );
       } catch (err) {
-        setMessages((prev) => {
-          const updated = [...prev];
-          const last = updated[updated.length - 1];
-          if (last && last.role === "assistant") {
-            updated[updated.length - 1] = {
-              ...last,
-              content: `Error: ${err instanceof Error ? err.message : String(err)}`,
-              isStreaming: false,
-            };
-          }
-          return updated;
-        });
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === assistantId
+              ? { ...m, content: `Error: ${err instanceof Error ? err.message : String(err)}`, isStreaming: false }
+              : m,
+          ),
+        );
       } finally {
         setIsLoading(false);
       }
