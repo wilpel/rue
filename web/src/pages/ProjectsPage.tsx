@@ -113,10 +113,10 @@ function ProjectDetailPanel({ name }: { name: string }) {
                   ) : by[key].map((t, i) => (
                     <div key={t.filename ?? i} className="p-3 rounded-lg border border-line bg-surface hover:border-accent/15 transition-colors">
                       <p className="text-xs font-medium text-text mb-0.5">{t.title}</p>
-                      {t.description && <p className="text-[11px] text-muted leading-relaxed mb-1.5 line-clamp-2">{t.description}</p>}
+                      {t.description && <p className="text-[11px] text-muted leading-relaxed mb-1.5 line-clamp-3">{t.description}</p>}
                       <div className="flex gap-2">
-                        {t.agent && <span className="text-[9px] text-accent font-mono flex items-center gap-1"><User size={8}/>{t.agent}</span>}
-                        {t.started && <span className="text-[9px] text-muted font-mono flex items-center gap-1"><Clock size={8}/>{new Date(t.started).toLocaleDateString()}</span>}
+                        {t.agent && t.agent !== "null" && <span className="text-[9px] text-accent font-mono flex items-center gap-1"><User size={8}/>{t.agent}</span>}
+                        {t.started && t.started !== "null" && !isNaN(new Date(t.started).getTime()) && <span className="text-[9px] text-muted font-mono flex items-center gap-1"><Clock size={8}/>{new Date(t.started).toLocaleDateString()}</span>}
                       </div>
                     </div>
                   ))}

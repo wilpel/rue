@@ -323,7 +323,8 @@ export class DaemonServer {
         if (colonIdx === -1) continue;
         const key = line.slice(0, colonIdx).trim();
         const val = line.slice(colonIdx + 1).trim();
-        task[key] = val;
+        // Convert YAML null/empty to actual null
+        task[key] = (val === "null" || val === "") ? null : val;
       }
     }
 
