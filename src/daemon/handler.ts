@@ -91,18 +91,51 @@ async function handleCmd(
               }
 
               case "assistant": {
-                const content = (message as {
-                  message: { content: Array<{ type: string; text?: string }> };
-                }).message.content;
+                const assistantMsg = message as {
+                  message: { content: Array<{ type: string; text?: string; name?: string; input?: Record<string, unknown>; id?: string }> };
+                  parent_tool_use_id: string | null;
+                };
+                const content = assistantMsg.message.content;
+
+                // Extract text
                 const fullText = content
                   .filter((b) => b.type === "text")
                   .map((b) => b.text ?? "")
                   .join("");
 
-                // Fallback: if no streaming events delivered text, send the full block
                 if (!streamedText && fullText) {
                   streamedText = fullText;
                   send({ type: "stream", agentId: "main", chunk: fullText });
+                }
+
+                // Detect tool_use blocks — emit events for Agent tool calls
+                for (const block of content) {
+                  if (block.type === "tool_use" && block.name === "Agent") {
+                    const input = block.input as { description?: string; prompt?: string } | undefined;
+                    const desc = input?.description ?? input?.prompt ?? "running task";
+                    deps.bus.emit("agent:spawned", {
+                      id: block.id ?? `sub-${Date.now()}`,
+                      task: desc,
+                      lane: "sub",
+                    });
+                  }
+                }
+                break;
+              }
+
+              case "user": {
+                // User messages include tool_result blocks — detect Agent completions
+                const userMsg = message as {
+                  message: { content: Array<{ type: string; tool_use_id?: string }> };
+                };
+                for (const block of userMsg.message.content) {
+                  if (block.type === "tool_result" && block.tool_use_id) {
+                    deps.bus.emit("agent:completed", {
+                      id: block.tool_use_id,
+                      result: "",
+                      cost: 0,
+                    });
+                  }
                 }
                 break;
               }

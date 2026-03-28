@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { Box, Text } from "ink";
 import TextInput from "ink-text-input";
-import Spinner from "ink-spinner";
 
 interface InputBarProps {
   onSubmit: (text: string) => void;
@@ -17,30 +16,23 @@ export function InputBar({ onSubmit, isLoading }: InputBarProps) {
     setValue("");
   };
 
+  if (isLoading) {
+    return (
+      <Box paddingX={1}>
+        <Text dimColor>waiting for response...</Text>
+      </Box>
+    );
+  }
+
   return (
-    <Box
-      borderStyle="single"
-      borderColor={isLoading ? "yellow" : "cyan"}
-      paddingX={1}
-    >
-      {isLoading ? (
-        <Box>
-          <Spinner type="dots" />
-          <Text color="yellow"> thinking...</Text>
-        </Box>
-      ) : (
-        <Box>
-          <Text color="cyan" bold>
-            {">"}{" "}
-          </Text>
-          <TextInput
-            value={value}
-            onChange={setValue}
-            onSubmit={handleSubmit}
-            placeholder="Type a message..."
-          />
-        </Box>
-      )}
+    <Box borderStyle="single" borderColor="cyan" paddingX={1}>
+      <Text color="cyan" bold>{">"} </Text>
+      <TextInput
+        value={value}
+        onChange={setValue}
+        onSubmit={handleSubmit}
+        placeholder="Type a message..."
+      />
     </Box>
   );
 }

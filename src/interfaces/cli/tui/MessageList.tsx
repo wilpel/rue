@@ -2,6 +2,11 @@ import { Box, Text } from "ink";
 import Spinner from "ink-spinner";
 import type { ChatMessage, AgentActivity } from "./App.js";
 
+function ElapsedTime({ startedAt }: { startedAt: number }) {
+  const elapsed = formatElapsed(Date.now() - startedAt);
+  return <Text dimColor>{elapsed}</Text>;
+}
+
 interface MessageListProps {
   messages: ChatMessage[];
 }
@@ -46,44 +51,47 @@ function UserMessage({ message }: { message: ChatMessage }) {
 }
 
 function AssistantMessage({ message }: { message: ChatMessage }) {
+  const showSpinner = message.isStreaming && !message.content;
   return (
     <Box flexDirection="column" marginTop={1} paddingLeft={1} borderStyle="single" borderColor="green" borderLeft borderRight={false} borderTop={false} borderBottom={false}>
       <Box>
         <Text bold color="green">rue </Text>
         <Text dimColor>{formatTime(message.timestamp)}</Text>
-        {message.isStreaming && (
+        {showSpinner && (
           <Box marginLeft={1}>
             <Spinner type="dots" />
           </Box>
         )}
       </Box>
-      <Text>{message.content || (message.isStreaming ? "" : "(empty response)")}</Text>
+      {message.content ? <Text>{message.content}</Text> : null}
     </Box>
   );
 }
 
 function AgentEventMessage({ activity }: { activity: AgentActivity }) {
-  const elapsed = formatElapsed(Date.now() - activity.startedAt);
   const stateIcon = getStateIcon(activity.state);
   const stateColor = getStateColor(activity.state);
+  const isActive = activity.state === "spawned" || activity.state === "running";
 
   return (
     <Box marginTop={1} paddingLeft={2}>
       <Box flexDirection="column">
         <Box>
           <Text color={stateColor}>{stateIcon} </Text>
-          <Text bold color={stateColor}>agent</Text>
-          <Text dimColor> {activity.id.slice(0, 16)}</Text>
-          <Text dimColor> | {activity.lane}</Text>
-          <Text dimColor> | {elapsed}</Text>
-          {activity.state === "spawned" && (
+          <Text bold color={stateColor}>agent </Text>
+          <Text dimColor>{activity.task}</Text>
+          {isActive && (
             <Box marginLeft={1}>
               <Spinner type="dots" />
+              <Text dimColor> </Text>
+              <ElapsedTime startedAt={activity.startedAt} />
             </Box>
           )}
-        </Box>
-        <Box paddingLeft={2}>
-          <Text color="gray">{activity.task}</Text>
+          {!isActive && (
+            <Box marginLeft={1}>
+              <ElapsedTime startedAt={activity.startedAt} />
+            </Box>
+          )}
         </Box>
       </Box>
     </Box>
