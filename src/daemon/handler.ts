@@ -74,8 +74,10 @@ async function handleCmd(
             },
           });
 
-          let streamedText = "";
+          let allText = "";
           let cost = 0;
+          // Track how much text was delivered via streaming per turn
+          let streamedInCurrentTurn = 0;
 
           for await (const message of q) {
             switch (message.type) {
@@ -96,7 +98,8 @@ async function handleCmd(
                   event.delta?.type === "text_delta" &&
                   event.delta.text
                 ) {
-                  streamedText += event.delta.text;
+                  allText += event.delta.text;
+                  streamedInCurrentTurn += event.delta.text.length;
                   send({ type: "stream", agentId: "main", chunk: event.delta.text });
                 }
                 break;
@@ -109,15 +112,22 @@ async function handleCmd(
                 };
                 const content = assistantMsg.message.content;
 
+                // Extract text from this message
                 const fullText = content
                   .filter((b) => b.type === "text")
                   .map((b) => b.text ?? "")
                   .join("");
 
-                if (!streamedText && fullText) {
-                  streamedText = fullText;
+                // If streaming didn't deliver this text (fallback for non-streamed turns),
+                // send it now. This handles multi-turn flows where Claude responds
+                // after tool results.
+                if (fullText && streamedInCurrentTurn === 0) {
+                  allText += fullText;
                   send({ type: "stream", agentId: "main", chunk: fullText });
                 }
+
+                // Reset for next turn
+                streamedInCurrentTurn = 0;
 
                 // Detect Agent tool calls
                 for (const block of content) {
@@ -135,6 +145,7 @@ async function handleCmd(
               }
 
               case "user": {
+                // Tool results come back as user messages — detect Agent completions
                 const userMsg = message as {
                   message: { content: Array<{ type: string; tool_use_id?: string }> };
                 };
@@ -159,13 +170,13 @@ async function handleCmd(
                 };
                 cost = resultMsg.total_cost_usd;
 
-                // Capture session ID from result too
                 if (resultMsg.session_id) {
                   sessionMap.set(ws, resultMsg.session_id);
                 }
 
-                if (resultMsg.subtype === "success" && resultMsg.result && !streamedText) {
-                  streamedText = resultMsg.result;
+                // Final fallback — if somehow nothing was sent yet
+                if (resultMsg.subtype === "success" && resultMsg.result && !allText) {
+                  allText = resultMsg.result;
                   send({ type: "stream", agentId: "main", chunk: resultMsg.result });
                 }
                 break;
@@ -176,7 +187,7 @@ async function handleCmd(
           send({
             type: "result",
             id: frame.id,
-            data: { output: streamedText, cost },
+            data: { output: allText, cost },
           });
         } catch (sdkError) {
           const message = sdkError instanceof Error ? sdkError.message : String(sdkError);
