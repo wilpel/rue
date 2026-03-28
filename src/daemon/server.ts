@@ -95,6 +95,11 @@ export class DaemonServer {
       });
     });
 
+    // Persist ALL bus events to the event log
+    this.bus.onWildcard("", (channel, payload) => {
+      this.persistence.append(channel, payload);
+    });
+
     // Watch for task-added events and auto-spawn agents
     this.startTaskWatcher();
 
