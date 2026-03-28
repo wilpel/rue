@@ -8,9 +8,12 @@ type PendingRequest = {
   onStream?: (chunk: string) => void;
 };
 
+export type EventHandler = (channel: string, payload: unknown) => void;
+
 export class DaemonClient {
   private ws: WebSocket | null = null;
   private pending = new Map<string, PendingRequest>();
+  private eventHandlers: EventHandler[] = [];
 
   constructor(private readonly url: string) {}
 
@@ -29,6 +32,14 @@ export class DaemonClient {
   disconnect(): void {
     this.ws?.close();
     this.ws = null;
+  }
+
+  onEvent(handler: EventHandler): () => void {
+    this.eventHandlers.push(handler);
+    return () => {
+      const idx = this.eventHandlers.indexOf(handler);
+      if (idx >= 0) this.eventHandlers.splice(idx, 1);
+    };
   }
 
   async ask(
@@ -105,6 +116,12 @@ export class DaemonClient {
       case "stream": {
         for (const req of this.pending.values()) {
           req.onStream?.(frame.chunk);
+        }
+        break;
+      }
+      case "event": {
+        for (const handler of this.eventHandlers) {
+          handler(frame.channel, frame.payload);
         }
         break;
       }

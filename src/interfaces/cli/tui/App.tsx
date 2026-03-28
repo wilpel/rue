@@ -5,13 +5,21 @@ import { InputBar } from "./InputBar.js";
 import { StatusBar } from "./StatusBar.js";
 import { DaemonClient } from "../client.js";
 
+export interface AgentActivity {
+  id: string;
+  task: string;
+  state: "spawned" | "running" | "completed" | "failed" | "killed";
+  startedAt: number;
+  lane: string;
+}
+
 export interface ChatMessage {
   id: string;
-  role: "user" | "assistant" | "system";
+  role: "user" | "assistant" | "system" | "agent-event";
   content: string;
   timestamp: number;
-  cost?: number;
   isStreaming?: boolean;
+  agentActivity?: AgentActivity;
 }
 
 interface AppProps {
@@ -20,17 +28,9 @@ interface AppProps {
 
 export function App({ client }: AppProps) {
   const { exit } = useApp();
-  const [messages, setMessages] = useState<ChatMessage[]>([
-    {
-      id: "welcome",
-      role: "system",
-      content: "Connected to Rue daemon. Type a message to begin.",
-      timestamp: Date.now(),
-    },
-  ]);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isLoading, setIsLoading] = useState(false);
-  const [totalCost, setTotalCost] = useState(0);
-  const [agentCount, setAgentCount] = useState(0);
+  const [agents, setAgents] = useState<Map<string, AgentActivity>>(new Map());
 
   useInput((_input, key) => {
     if (key.ctrl && _input === "c") {
@@ -39,17 +39,97 @@ export function App({ client }: AppProps) {
     }
   });
 
-  // Poll agent count periodically
+  // Subscribe to agent events from the daemon
   useEffect(() => {
-    const interval = setInterval(async () => {
-      try {
-        const status = await client.status();
-        setAgentCount((status.agents as unknown[]).length);
-      } catch {
-        // ignore — daemon might be busy
+    client.subscribe(["agent:*", "task:*"]);
+
+    const unsub = client.onEvent((channel, payload) => {
+      const data = payload as Record<string, unknown>;
+
+      switch (channel) {
+        case "agent:spawned": {
+          const activity: AgentActivity = {
+            id: data.id as string,
+            task: data.task as string,
+            state: "spawned",
+            startedAt: Date.now(),
+            lane: data.lane as string,
+          };
+          setAgents((prev) => new Map(prev).set(activity.id, activity));
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: `event-${Date.now()}-spawned`,
+              role: "agent-event",
+              content: "",
+              timestamp: Date.now(),
+              agentActivity: activity,
+            },
+          ]);
+          break;
+        }
+        case "agent:completed": {
+          const id = data.id as string;
+          setAgents((prev) => {
+            const next = new Map(prev);
+            const existing = next.get(id);
+            if (existing) {
+              next.set(id, { ...existing, state: "completed" });
+            }
+            return next;
+          });
+          // Update the event message
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.agentActivity?.id === id
+                ? { ...m, agentActivity: { ...m.agentActivity, state: "completed" as const } }
+                : m,
+            ),
+          );
+          break;
+        }
+        case "agent:failed": {
+          const id = data.id as string;
+          setAgents((prev) => {
+            const next = new Map(prev);
+            const existing = next.get(id);
+            if (existing) {
+              next.set(id, { ...existing, state: "failed" });
+            }
+            return next;
+          });
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.agentActivity?.id === id
+                ? { ...m, agentActivity: { ...m.agentActivity, state: "failed" as const } }
+                : m,
+            ),
+          );
+          break;
+        }
+        case "agent:killed": {
+          const id = data.id as string;
+          setAgents((prev) => {
+            const next = new Map(prev);
+            const existing = next.get(id);
+            if (existing) {
+              next.set(id, { ...existing, state: "killed" });
+            }
+            return next;
+          });
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.agentActivity?.id === id
+                ? { ...m, agentActivity: { ...m.agentActivity, state: "killed" as const } }
+                : m,
+            ),
+          );
+          break;
+        }
       }
-    }, 3000);
-    return () => clearInterval(interval);
+    });
+
+    return unsub;
   }, [client]);
 
   const handleSubmit = useCallback(
@@ -75,7 +155,7 @@ export function App({ client }: AppProps) {
       setIsLoading(true);
 
       try {
-        const result = await client.ask(text, {
+        await client.ask(text, {
           onStream: (chunk) => {
             setMessages((prev) => {
               const updated = [...prev];
@@ -98,13 +178,10 @@ export function App({ client }: AppProps) {
             updated[updated.length - 1] = {
               ...last,
               isStreaming: false,
-              cost: result.cost,
             };
           }
           return updated;
         });
-
-        setTotalCost((prev) => prev + result.cost);
       } catch (err) {
         setMessages((prev) => {
           const updated = [...prev];
@@ -125,6 +202,10 @@ export function App({ client }: AppProps) {
     [client, isLoading],
   );
 
+  const activeAgents = Array.from(agents.values()).filter(
+    (a) => a.state === "spawned" || a.state === "running",
+  );
+
   return (
     <Box flexDirection="column" width="100%" height="100%">
       <Header />
@@ -132,28 +213,17 @@ export function App({ client }: AppProps) {
         <MessageList messages={messages} />
       </Box>
       <InputBar onSubmit={handleSubmit} isLoading={isLoading} />
-      <StatusBar
-        totalCost={totalCost}
-        agentCount={agentCount}
-        isLoading={isLoading}
-      />
+      <StatusBar agentCount={activeAgents.length} isLoading={isLoading} />
     </Box>
   );
 }
 
 function Header() {
   return (
-    <Box
-      borderStyle="single"
-      borderColor="cyan"
-      paddingX={1}
-      justifyContent="center"
-    >
-      <Text bold color="cyan">
-        rue
-      </Text>
+    <Box borderStyle="single" borderColor="cyan" paddingX={1} justifyContent="center">
+      <Text bold color="cyan">rue</Text>
       <Text color="gray"> v0.1.0 </Text>
-      <Text dimColor>| Ctrl+C to quit</Text>
+      <Text dimColor>| ctrl+c to quit</Text>
     </Box>
   );
 }
