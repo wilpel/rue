@@ -372,23 +372,31 @@ export class DaemonServer {
         const event = JSON.parse(raw) as {
           type: string;
           project: string;
-          taskFile: string;
-          task: string;
-          timestamp: number;
+          taskFile: string;      // bare filename like "002-foo.md"
+          taskTitle: string;
+          taskId: number;
+          timestamp: string;     // ISO string
         };
 
         // Only process new events
-        if (event.timestamp <= this.lastEventTimestamp) return;
-        this.lastEventTimestamp = event.timestamp;
+        const ts = new Date(event.timestamp).getTime();
+        if (ts <= this.lastEventTimestamp) return;
+        this.lastEventTimestamp = ts;
 
-        this.spawnProjectAgent(event.project, event.taskFile, event.task);
-      } catch {
-        // Ignore parse errors
+        console.log(`[rue] Task watcher: picked up task #${event.taskId} "${event.taskTitle}" for project ${event.project}`);
+
+        // taskFile is bare filename — prepend tasks/
+        const taskPath = `tasks/${event.taskFile}`;
+        this.spawnProjectAgent(event.project, taskPath, event.taskTitle);
+      } catch (err) {
+        // Log errors instead of silently swallowing
+        console.error("[rue] Task watcher error:", err instanceof Error ? err.message : err);
       }
     }, 5000); // Check every 5 seconds
   }
 
   private async spawnProjectAgent(projectName: string, taskFile: string, taskDescription: string): Promise<void> {
+    console.log(`[rue] Spawning agent for project "${projectName}" — ${taskDescription}`);
     const projectDir = path.join(this.projectsDir, projectName);
     const agentsMdPath = path.join(projectDir, "AGENTS.md");
     const taskFilePath = path.join(projectDir, taskFile);
