@@ -81,7 +81,6 @@ function ProjectDetailPanel({ name }: { name: string }) {
     <div className="flex-1 flex flex-col overflow-hidden">
       <div className="h-12 flex items-center gap-3 px-4 border-b border-line shrink-0">
         <h2 className="text-sm font-semibold text-text">{project.name}</h2>
-        <span className="text-[10px] text-muted font-mono">max {project.maxAgents}</span>
         <div className="flex gap-0.5 ml-4">
           {(["board","docs"] as const).map(t => (
             <button key={t} onClick={() => setTab(t)} className={`px-2.5 py-1 rounded-md text-[11px] font-medium transition-colors ${tab === t ? "bg-hover text-text" : "text-muted hover:text-secondary"}`}>
