@@ -196,6 +196,14 @@ async function handleCmd(
         break;
       }
 
+      case "reset": {
+        // Clear the Claude Code session — next ask starts fresh
+        sessionMap.delete(ws);
+        lastSessionId = undefined;
+        send({ type: "result", id: frame.id, data: { ok: true } });
+        break;
+      }
+
       case "history": {
         const limit = (frame.args.limit as number) ?? 20;
         const messages = deps.messages.recent(limit);

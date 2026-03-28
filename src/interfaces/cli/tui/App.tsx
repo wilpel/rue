@@ -217,11 +217,30 @@ async function handleSlashCommand(
       setMessages([]);
       break;
     }
+    case "reset": {
+      try {
+        await _client.reset();
+        setMessages([{
+          id: `sys-${Date.now()}`,
+          role: "system",
+          content: "Session reset. Starting fresh conversation.",
+          timestamp: Date.now(),
+        }]);
+      } catch {
+        setMessages((prev) => [...prev, {
+          id: `sys-${Date.now()}`,
+          role: "system",
+          content: "Failed to reset session.",
+          timestamp: Date.now(),
+        }]);
+      }
+      break;
+    }
     case "help": {
       setMessages((prev) => [...prev, {
         id: `sys-${Date.now()}`,
         role: "system",
-        content: "Commands: /agents — list agents | /clear — clear chat | /help — this message",
+        content: "Commands: /agents — list agents | /clear — clear chat | /reset — new session | /help — this message",
         timestamp: Date.now(),
       }]);
       break;
