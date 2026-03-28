@@ -358,41 +358,68 @@ export class DaemonServer {
   // ── Task Watcher — auto-spawn agents on new tasks ──────────────
 
   private _taskWatcher: NodeJS.Timeout | null = null;
-  private lastEventTimestamp = 0;
+
+  private activeProjectAgents = new Set<string>(); // track running agents by "project:taskFile"
 
   private startTaskWatcher(): void {
-    const eventsDir = path.join(os.homedir(), ".rue", "workspace", "events");
-    const eventFile = path.join(eventsDir, "task-added.json");
-
+    // Scan all projects for todo tasks every 10 seconds
     this._taskWatcher = setInterval(() => {
-      if (!fs.existsSync(eventFile)) return;
+      this.scanForTodoTasks();
+    }, 10_000);
 
-      try {
-        const raw = fs.readFileSync(eventFile, "utf-8");
-        const event = JSON.parse(raw) as {
-          type: string;
-          project: string;
-          taskFile: string;      // bare filename like "002-foo.md"
-          taskTitle: string;
-          taskId: number;
-          timestamp: string;     // ISO string
-        };
+    // Also run once on startup after a short delay
+    setTimeout(() => this.scanForTodoTasks(), 3000);
+  }
 
-        // Only process new events
-        const ts = new Date(event.timestamp).getTime();
-        if (ts <= this.lastEventTimestamp) return;
-        this.lastEventTimestamp = ts;
+  private scanForTodoTasks(): void {
+    if (!fs.existsSync(this.projectsDir)) return;
 
-        console.log(`[rue] Task watcher: picked up task #${event.taskId} "${event.taskTitle}" for project ${event.project}`);
+    const projectDirs = fs.readdirSync(this.projectsDir, { withFileTypes: true })
+      .filter(d => d.isDirectory());
 
-        // taskFile is bare filename — prepend tasks/
-        const taskPath = `tasks/${event.taskFile}`;
-        this.spawnProjectAgent(event.project, taskPath, event.taskTitle);
-      } catch (err) {
-        // Log errors instead of silently swallowing
-        console.error("[rue] Task watcher error:", err instanceof Error ? err.message : err);
+    for (const projDir of projectDirs) {
+      const configPath = path.join(this.projectsDir, projDir.name, "config.json");
+      if (!fs.existsSync(configPath)) continue;
+
+      const config = JSON.parse(fs.readFileSync(configPath, "utf-8"));
+      if (config.status !== "active") continue;
+
+      const tasksDir = path.join(this.projectsDir, projDir.name, "tasks");
+      if (!fs.existsSync(tasksDir)) continue;
+
+      // Count in-progress tasks for this project
+      const taskFiles = fs.readdirSync(tasksDir).filter(f => f.endsWith(".md"));
+      let inProgressCount = 0;
+      let nextTodo: { file: string; title: string } | null = null;
+
+      for (const file of taskFiles) {
+        const content = fs.readFileSync(path.join(tasksDir, file), "utf-8");
+        if (content.includes("status: in-progress")) {
+          inProgressCount++;
+        } else if (content.includes("status: todo") && !nextTodo) {
+          // Extract title
+          const titleMatch = content.match(/^#\s+(.+)$/m);
+          nextTodo = { file, title: titleMatch?.[1] ?? file };
+        }
       }
-    }, 5000); // Check every 5 seconds
+
+      // Respect maxAgents limit
+      const maxAgents = config.maxAgents ?? 1;
+      if (inProgressCount >= maxAgents) continue;
+      if (!nextTodo) continue;
+
+      // Don't spawn if already running
+      const key = `${projDir.name}:${nextTodo.file}`;
+      if (this.activeProjectAgents.has(key)) continue;
+      this.activeProjectAgents.add(key);
+
+      console.log(`[rue] Picking up task "${nextTodo.title}" for project ${projDir.name}`);
+
+      const taskPath = `tasks/${nextTodo.file}`;
+      this.spawnProjectAgent(projDir.name, taskPath, nextTodo.title).finally(() => {
+        this.activeProjectAgents.delete(key);
+      });
+    }
   }
 
   private async spawnProjectAgent(projectName: string, taskFile: string, taskDescription: string): Promise<void> {

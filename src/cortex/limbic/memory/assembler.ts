@@ -1,5 +1,6 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
+import * as os from "node:os";
 import type { SemanticMemory } from "./semantic.js";
 import type { WorkingMemory } from "./working.js";
 import type { IdentityCore } from "../identity/core.js";
@@ -61,6 +62,12 @@ export class ContextAssembler {
       sections.push(skillsSummary);
     }
 
+    // Show running project agents
+    const agentStatus = this.getRunningAgents();
+    if (agentStatus) {
+      sections.push(agentStatus);
+    }
+
     return sections.join("\n\n");
   }
 
@@ -106,6 +113,46 @@ export class ContextAssembler {
     }
 
     lines.push("\nTo use a skill, read its SKILL.md for exact usage, then run via Bash.");
+
+    return lines.join("\n");
+  }
+
+  private getRunningAgents(): string | null {
+    const projectsDir = path.join(os.homedir(), ".rue", "workspace", "projects");
+    if (!fs.existsSync(projectsDir)) return null;
+
+    const running: Array<{ project: string; task: string; started: string }> = [];
+
+    const projDirs = fs.readdirSync(projectsDir, { withFileTypes: true }).filter(d => d.isDirectory());
+    for (const projDir of projDirs) {
+      const tasksDir = path.join(projectsDir, projDir.name, "tasks");
+      if (!fs.existsSync(tasksDir)) continue;
+
+      const files = fs.readdirSync(tasksDir).filter(f => f.endsWith(".md"));
+      for (const file of files) {
+        const content = fs.readFileSync(path.join(tasksDir, file), "utf-8");
+        if (!content.includes("status: in-progress")) continue;
+
+        const titleMatch = content.match(/^#\s+(.+)$/m);
+        const startedMatch = content.match(/started:\s*(\S+)/);
+        running.push({
+          project: projDir.name,
+          task: titleMatch?.[1] ?? file,
+          started: startedMatch?.[1] ?? "unknown",
+        });
+      }
+    }
+
+    if (running.length === 0) return null;
+
+    const lines = [
+      "## Running Project Agents",
+      `${running.length} agent(s) currently working:\n`,
+    ];
+
+    for (const r of running) {
+      lines.push(`- **${r.project}**: ${r.task} (started: ${r.started})`);
+    }
 
     return lines.join("\n");
   }
