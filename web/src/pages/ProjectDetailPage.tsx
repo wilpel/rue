@@ -4,10 +4,10 @@ import { ArrowLeft, Plus, User, Clock, LayoutGrid, FileText } from "lucide-react
 import { api, type ProjectDetail, type Task, type ProjectDoc } from "../lib/api";
 
 type Tab = "board" | "docs";
-const COLUMNS = [
-  { key: "todo", label: "Todo", dot: "bg-text-muted/30" },
-  { key: "in-progress", label: "In Progress", dot: "bg-accent" },
-  { key: "done", label: "Done", dot: "bg-success" },
+const COLS = [
+  { key: "todo", label: "Todo", dot: "bg-dim" },
+  { key: "in-progress", label: "In Progress", dot: "bg-amber" },
+  { key: "done", label: "Done", dot: "bg-green" },
 ] as const;
 
 export function ProjectDetailPage() {
@@ -27,39 +27,40 @@ export function ProjectDetailPage() {
       .finally(() => setLoading(false));
   }, [name]);
 
-  if (loading) return <div className="h-screen flex items-center justify-center"><div className="w-2.5 h-2.5 rounded-full bg-accent/40 animate-breathe" /></div>;
+  if (loading) return <div className="h-full flex items-center justify-center"><p className="text-dim text-sm">Loading...</p></div>;
   if (error || !project) return (
-    <div className="h-screen flex flex-col items-center justify-center gap-3">
-      <p className="text-error text-sm">{error ?? "Not found"}</p>
-      <Link to="/projects" className="text-accent text-xs hover:text-accent-hover transition-colors">Back</Link>
+    <div className="h-full flex flex-col items-center justify-center gap-2">
+      <p className="text-red text-sm">{error ?? "Not found"}</p>
+      <Link to="/projects" className="text-amber text-xs">Back</Link>
     </div>
   );
 
-  const tasksByStatus: Record<string, Task[]> = { todo: [], "in-progress": [], done: [] };
-  for (const t of project.tasks) { const s = t.status ?? "todo"; if (s in tasksByStatus) tasksByStatus[s].push(t); else tasksByStatus.todo.push(t); }
-  const activeDoc = docs.find(d => d.path === selectedDoc) ?? docs[0] ?? null;
+  const byStatus: Record<string, Task[]> = { todo: [], "in-progress": [], done: [] };
+  for (const t of project.tasks) { const s = t.status ?? "todo"; (byStatus[s] ?? byStatus.todo).push(t); }
+  const doc = docs.find(d => d.path === selectedDoc) ?? docs[0] ?? null;
 
   return (
-    <div className="h-screen flex flex-col">
-      <div className="border-b border-glass-border glass px-6 py-4">
-        <div className="flex items-center gap-4">
-          <Link to="/projects" className="text-text-muted hover:text-text-primary transition-colors"><ArrowLeft size={18} /></Link>
+    <div className="h-full flex flex-col">
+      {/* Header */}
+      <div className="border-b border-line px-6 py-3">
+        <div className="flex items-center gap-3 mb-2">
+          <Link to="/projects" className="text-dim hover:text-gray transition-colors"><ArrowLeft size={16} /></Link>
           <div className="flex-1 min-w-0">
-            <h1 className="text-sm font-semibold text-text-primary">{project.name}</h1>
-            <p className="text-xs text-text-muted truncate">{project.description}</p>
+            <h1 className="text-sm font-semibold text-white">{project.name}</h1>
+            <p className="text-xs text-dim truncate">{project.description}</p>
           </div>
-          <span className="text-[10px] text-text-muted font-mono glass px-2 py-1 rounded-lg">max {project.maxAgents}</span>
+          <span className="text-[10px] text-dim font-code bg-elevated px-2 py-1 rounded">max {project.maxAgents}</span>
           {tab === "board" && (
-            <button className="flex items-center gap-1.5 px-3 py-1.5 bg-accent hover:bg-accent-hover text-bg text-xs font-semibold rounded-lg transition-colors">
+            <button className="flex items-center gap-1.5 px-3 py-1.5 bg-amber text-bg text-xs font-semibold rounded-lg hover:bg-amber/90 transition-colors">
               <Plus size={14} /> Add Task
             </button>
           )}
         </div>
-        <div className="flex gap-1 mt-3">
+        <div className="flex gap-1">
           {(["board", "docs"] as Tab[]).map(t => (
             <button key={t} onClick={() => setTab(t)}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-200 ${
-                tab === t ? "bg-accent-glow text-accent" : "text-text-muted hover:text-text-secondary"
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
+                tab === t ? "bg-elevated text-white" : "text-dim hover:text-gray"
               }`}>
               {t === "board" ? <LayoutGrid size={12} /> : <FileText size={12} />}
               {t === "board" ? "Board" : `Docs (${docs.length})`}
@@ -68,26 +69,29 @@ export function ProjectDetailPage() {
         </div>
       </div>
 
+      {/* Board */}
       {tab === "board" && (
-        <div className="flex-1 overflow-x-auto p-6">
-          <div className="flex gap-5 min-h-full">
-            {COLUMNS.map(({ key, label, dot }) => (
-              <div key={key} className="flex-1 min-w-[260px]">
-                <div className="flex items-center gap-2 mb-4">
+        <div className="flex-1 overflow-x-auto p-5">
+          <div className="flex gap-4 h-full">
+            {COLS.map(({ key, label, dot }) => (
+              <div key={key} className="flex-1 min-w-[250px] flex flex-col">
+                <div className="flex items-center gap-2 mb-3">
                   <div className={`w-1.5 h-1.5 rounded-full ${dot}`} />
-                  <h3 className="text-[11px] font-semibold text-text-muted uppercase tracking-[0.1em]">{label}</h3>
-                  <span className="text-[10px] text-text-muted/50 ml-auto font-mono">{tasksByStatus[key].length}</span>
+                  <span className="text-[11px] font-semibold text-dim uppercase tracking-wider">{label}</span>
+                  <span className="text-[10px] text-dim/50 ml-auto font-code">{byStatus[key].length}</span>
                 </div>
-                <div className="space-y-2.5">
-                  {tasksByStatus[key].length === 0 ? (
-                    <div className="glass rounded-2xl border-dashed p-8 text-center"><p className="text-[11px] text-text-muted/30">No tasks</p></div>
-                  ) : tasksByStatus[key].map((task, i) => (
-                    <div key={task.filename ?? i} className="glass glass-hover rounded-2xl p-4 transition-all duration-200">
-                      <h4 className="text-xs font-medium text-text-primary mb-1">{task.title}</h4>
-                      {task.description && <p className="text-[11px] text-text-muted leading-relaxed mb-2 line-clamp-3">{task.description}</p>}
-                      <div className="flex flex-wrap gap-2">
-                        {task.agent && <span className="flex items-center gap-1 text-[10px] text-accent font-mono"><User size={9} />{task.agent}</span>}
-                        {task.started && <span className="flex items-center gap-1 text-[10px] text-text-muted font-mono"><Clock size={9} />{new Date(task.started).toLocaleDateString()}</span>}
+                <div className="space-y-2 flex-1">
+                  {byStatus[key].length === 0 ? (
+                    <div className="rounded-xl border border-dashed border-line p-6 text-center">
+                      <p className="text-[11px] text-dim/40">Empty</p>
+                    </div>
+                  ) : byStatus[key].map((task, i) => (
+                    <div key={task.filename ?? i} className="p-3 rounded-xl border border-line bg-raised hover:border-line-strong transition-colors">
+                      <h4 className="text-xs font-medium text-white mb-0.5">{task.title}</h4>
+                      {task.description && <p className="text-[11px] text-dim leading-relaxed mb-2 line-clamp-2">{task.description}</p>}
+                      <div className="flex gap-2">
+                        {task.agent && <span className="flex items-center gap-1 text-[10px] text-amber font-code"><User size={9} />{task.agent}</span>}
+                        {task.started && <span className="flex items-center gap-1 text-[10px] text-dim font-code"><Clock size={9} />{new Date(task.started).toLocaleDateString()}</span>}
                       </div>
                     </div>
                   ))}
@@ -98,32 +102,29 @@ export function ProjectDetailPage() {
         </div>
       )}
 
+      {/* Docs */}
       {tab === "docs" && (
         <div className="flex-1 flex overflow-hidden">
-          <div className="w-48 border-r border-glass-border bg-bg/50 overflow-y-auto p-2.5">
-            {docs.map(doc => (
-              <button key={doc.path} onClick={() => setSelectedDoc(doc.path)}
-                className={`w-full text-left px-3 py-2 rounded-lg text-xs transition-all mb-0.5 ${
-                  selectedDoc === doc.path ? "bg-accent-glow text-accent" : "text-text-muted hover:bg-glass-hover hover:text-text-secondary"
+          <div className="w-44 border-r border-line overflow-y-auto p-2">
+            {docs.map(d => (
+              <button key={d.path} onClick={() => setSelectedDoc(d.path)}
+                className={`w-full text-left px-3 py-2 rounded-lg text-xs mb-0.5 transition-colors ${
+                  selectedDoc === d.path ? "bg-elevated text-white" : "text-dim hover:text-gray hover:bg-raised"
                 }`}>
-                <div className="flex items-center gap-2"><FileText size={11} /><span className="truncate">{doc.name}</span></div>
+                <div className="flex items-center gap-2"><FileText size={11} /><span className="truncate">{d.name}</span></div>
               </button>
             ))}
           </div>
           <div className="flex-1 overflow-y-auto p-6">
-            {activeDoc ? (
-              <div className="max-w-3xl animate-fade-up">
-                <div className="flex items-center gap-2 mb-5">
-                  <FileText size={14} className="text-accent/50" />
-                  <h2 className="text-xs font-semibold text-text-secondary">{activeDoc.name}</h2>
-                  <span className="text-[10px] text-text-muted font-mono">{activeDoc.path}</span>
-                </div>
-                <div className="glass rounded-2xl p-6">
-                  <pre className="whitespace-pre-wrap text-xs text-text-secondary font-mono leading-relaxed">{activeDoc.content}</pre>
+            {doc ? (
+              <div className="max-w-3xl">
+                <h2 className="text-xs font-semibold text-gray mb-4">{doc.name} <span className="text-dim font-code font-normal ml-2">{doc.path}</span></h2>
+                <div className="p-5 rounded-xl border border-line bg-raised">
+                  <pre className="whitespace-pre-wrap text-xs text-gray font-code leading-relaxed">{doc.content}</pre>
                 </div>
               </div>
             ) : (
-              <div className="flex items-center justify-center h-full"><p className="text-text-muted/30 text-xs">Select a document</p></div>
+              <p className="text-dim text-xs text-center mt-20">Select a document</p>
             )}
           </div>
         </div>
