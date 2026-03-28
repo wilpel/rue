@@ -1,67 +1,56 @@
 import { Outlet, NavLink } from "react-router-dom";
-import { Home, MessageCircle, FolderKanban, Bot, Settings } from "lucide-react";
-
-const nav = [
-  { to: "/", icon: Home, label: "Home" },
-  { to: "/chat", icon: MessageCircle, label: "Chat" },
-  { to: "/projects", icon: FolderKanban, label: "Projects" },
-  { to: "/agents", icon: Bot, label: "Agents" },
-];
+import { MessageCircle, FolderKanban, Bot, Settings, CircleDot } from "lucide-react";
 
 export function Layout() {
   return (
-    <div className="h-screen flex relative overflow-hidden">
-      {/* Living background */}
-      <div className="orb orb-1" />
-      <div className="orb orb-2" />
-      <div className="orb orb-3" />
+    <div className="h-screen flex flex-col bg-bg">
+      {/* Command bar */}
+      <header className="h-12 shrink-0 border-b border-line flex items-center px-5 gap-6">
+        <NavLink to="/" className="flex items-center gap-2 mr-4">
+          <CircleDot size={14} className="text-amber" />
+          <span className="text-sm font-semibold text-white tracking-tight">rue</span>
+        </NavLink>
 
-      {/* Sidebar */}
-      <nav className="w-[200px] shrink-0 glass border-r border-glass-border flex flex-col p-3 pt-5 z-10 relative">
-        <div className="px-3 mb-8 flex items-center gap-2.5">
-          <div className="w-2 h-2 rounded-full bg-accent animate-breathe" />
-          <span className="text-base font-semibold text-accent tracking-wide">rue</span>
+        <div className="flex items-center gap-1 h-full">
+          <Tab to="/chat" label="Chat" icon={MessageCircle} />
+          <Tab to="/projects" label="Projects" icon={FolderKanban} />
+          <Tab to="/agents" label="Agents" icon={Bot} />
         </div>
 
-        <div className="flex flex-col gap-0.5">
-          {nav.map(({ to, icon: Icon, label }) => (
-            <NavLink
-              key={to}
-              to={to}
-              end={to === "/"}
-              className={({ isActive }) =>
-                `flex items-center gap-3 px-3 py-2 rounded-lg text-[13px] font-medium transition-all duration-200 ${
-                  isActive
-                    ? "bg-accent-glow text-accent"
-                    : "text-text-muted hover:text-text-secondary hover:bg-glass-hover"
-                }`
-              }
-            >
-              <Icon size={16} strokeWidth={1.5} />
-              {label}
-            </NavLink>
-          ))}
-        </div>
-
-        <div className="mt-auto">
+        <div className="ml-auto">
           <NavLink
             to="/settings"
             className={({ isActive }) =>
-              `flex items-center gap-3 px-3 py-2 rounded-lg text-[13px] font-medium transition-all duration-200 ${
-                isActive ? "bg-accent-glow text-accent" : "text-text-muted hover:text-text-secondary hover:bg-glass-hover"
-              }`
+              `p-1.5 rounded-md transition-colors ${isActive ? "text-white" : "text-dim hover:text-gray"}`
             }
           >
-            <Settings size={16} strokeWidth={1.5} />
-            Settings
+            <Settings size={15} />
           </NavLink>
         </div>
-      </nav>
+      </header>
 
-      {/* Main content */}
-      <main className="flex-1 overflow-auto z-10 relative">
+      {/* Content */}
+      <main className="flex-1 overflow-auto">
         <Outlet />
       </main>
     </div>
+  );
+}
+
+function Tab({ to, label, icon: Icon }: { to: string; label: string; icon: React.ComponentType<{ size?: number }> }) {
+  return (
+    <NavLink
+      to={to}
+      className={({ isActive }) =>
+        `flex items-center gap-2 px-3 h-full text-[13px] font-medium border-b-2 transition-colors ${
+          isActive
+            ? "border-amber text-white"
+            : "border-transparent text-dim hover:text-gray"
+        }`
+      }
+    >
+      <Icon size={14} />
+      {label}
+    </NavLink>
   );
 }

@@ -1,90 +1,145 @@
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
-import { MessageCircle, FolderKanban, Bot, CheckSquare, ArrowRight, Sparkles } from "lucide-react";
-import { api } from "../lib/api";
+import { Link, useNavigate } from "react-router-dom";
+import { ArrowRight, Send, FolderKanban, Bot, MessageCircle } from "lucide-react";
+import { api, type ProjectSummary, type DaemonStatus } from "../lib/api";
 
 export function HomePage() {
-  const [greeting, setGreeting] = useState("");
-  const [recent, setRecent] = useState<Array<{ content: string }>>([]);
+  const navigate = useNavigate();
+  const [projects, setProjects] = useState<ProjectSummary[]>([]);
+  const [agents, setAgents] = useState<DaemonStatus["agents"]>([]);
+  const [recent, setRecent] = useState<Array<{ content: string; role: string }>>([]);
+  const [input, setInput] = useState("");
 
   useEffect(() => {
-    const h = new Date().getHours();
-    setGreeting(h < 12 ? "Good morning" : h < 18 ? "Good afternoon" : "Good evening");
-    api.history(8).then(r => setRecent(r.messages.filter((m: any) => m.role === "user").slice(-4))).catch(() => {});
+    api.projects().then(setProjects).catch(() => {});
+    api.daemonStatus().then(r => setAgents(r.agents)).catch(() => {});
+    api.history(6).then(r => setRecent(r.messages.slice(-6))).catch(() => {});
   }, []);
 
-  const today = new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" });
+  const hour = new Date().getHours();
+  const greeting = hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
 
   return (
-    <div className="max-w-4xl mx-auto px-8 py-14">
-      <div className="mb-14 animate-fade-up">
-        <div className="flex items-center gap-4 mb-1">
-          <div className="w-10 h-10 rounded-2xl bg-accent-glow flex items-center justify-center glass">
-            <Sparkles size={18} className="text-accent" />
-          </div>
-          <div>
-            <h1 className="text-3xl font-bold text-text-primary tracking-tight">{greeting}</h1>
-            <p className="text-sm text-text-muted mt-0.5">{today}</p>
-          </div>
+    <div className="h-full flex">
+      {/* Left: Chat-centric main area */}
+      <div className="flex-1 flex flex-col">
+        {/* Hero greeting + input */}
+        <div className="flex-1 flex flex-col items-center justify-center px-8 max-w-2xl mx-auto w-full">
+          <h1 className="text-4xl font-bold text-white mb-2 tracking-tight">{greeting}</h1>
+          <p className="text-gray text-sm mb-10">What are you working on?</p>
+
+          <form
+            onSubmit={(e) => { e.preventDefault(); if (input.trim()) navigate("/chat"); }}
+            className="w-full relative"
+          >
+            <input
+              value={input}
+              onChange={e => setInput(e.target.value)}
+              onFocus={() => navigate("/chat")}
+              placeholder="Ask Rue anything..."
+              className="w-full h-14 pl-5 pr-14 bg-raised border border-line rounded-2xl text-white text-sm placeholder:text-dim focus:outline-none focus:border-line-strong transition-colors"
+            />
+            <button type="submit" className="absolute right-2 top-1/2 -translate-y-1/2 w-10 h-10 bg-amber hover:bg-amber/90 rounded-xl flex items-center justify-center transition-colors">
+              <Send size={16} className="text-bg" />
+            </button>
+          </form>
+
+          {/* Recent conversations */}
+          {recent.length > 0 && (
+            <div className="mt-8 w-full">
+              <div className="flex flex-wrap gap-2">
+                {recent.filter(m => m.role === "user").slice(-3).map((m, i) => (
+                  <Link
+                    key={i}
+                    to="/chat"
+                    className="px-3 py-1.5 bg-raised border border-line rounded-lg text-xs text-gray hover:text-white hover:border-line-strong transition-colors truncate max-w-[200px]"
+                  >
+                    {m.content}
+                  </Link>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-8 mb-14">
-        <div className="animate-fade-up delay-1">
-          <Label>Recent</Label>
-          <div className="glass rounded-2xl p-5 min-h-[160px]">
-            {recent.length === 0 ? (
-              <p className="text-text-muted text-sm py-8 text-center">No conversations yet</p>
-            ) : (
-              <div className="space-y-3">
-                {recent.map((m, i) => (
-                  <div key={i} className="flex items-center gap-3 group">
-                    <div className="w-1 h-1 rounded-full bg-accent/40 shrink-0" />
-                    <p className="text-sm text-text-secondary group-hover:text-text-primary transition-colors truncate">{m.content}</p>
-                  </div>
-                ))}
-              </div>
-            )}
-            <Link to="/chat" className="flex items-center gap-1.5 text-accent/60 hover:text-accent text-xs font-medium mt-5 transition-colors">
-              View all <ArrowRight size={12} />
-            </Link>
+      {/* Right: Context panel */}
+      <div className="w-80 border-l border-line bg-raised/50 overflow-y-auto">
+        {/* Projects */}
+        <div className="p-5 border-b border-line">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-[11px] font-semibold text-dim uppercase tracking-widest">Projects</h2>
+            <Link to="/projects" className="text-[11px] text-dim hover:text-gray transition-colors">View all</Link>
           </div>
+          {projects.length === 0 ? (
+            <div className="text-center py-6">
+              <FolderKanban size={20} className="mx-auto text-dim/50 mb-2" />
+              <p className="text-xs text-dim">No projects</p>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {projects.slice(0, 4).map(p => (
+                <Link key={p.name} to={`/projects/${p.name}`} className="block p-3 rounded-xl border border-line hover:border-line-strong bg-bg/50 transition-colors group">
+                  <div className="flex items-center gap-2 mb-1">
+                    <h3 className="text-xs font-medium text-white truncate">{p.name}</h3>
+                    <span className="text-[9px] px-1.5 py-0.5 bg-amber-dim text-amber rounded-full shrink-0">{p.status}</span>
+                  </div>
+                  <p className="text-[11px] text-dim truncate">{p.description}</p>
+                  <div className="flex gap-3 mt-2 text-[10px] text-dim">
+                    <span>{p.taskCounts.todo} todo</span>
+                    <span className="text-amber">{p.taskCounts["in-progress"]} active</span>
+                    <span className="text-green">{p.taskCounts.done} done</span>
+                  </div>
+                </Link>
+              ))}
+            </div>
+          )}
         </div>
 
-        <div className="animate-fade-up delay-2">
-          <Label>Quick actions</Label>
-          <div className="grid grid-cols-2 gap-3">
+        {/* Agents */}
+        <div className="p-5 border-b border-line">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-[11px] font-semibold text-dim uppercase tracking-widest">Agents</h2>
+            <Link to="/agents" className="text-[11px] text-dim hover:text-gray transition-colors">View all</Link>
+          </div>
+          {agents.length === 0 ? (
+            <div className="text-center py-6">
+              <Bot size={20} className="mx-auto text-dim/50 mb-2" />
+              <p className="text-xs text-dim">No active agents</p>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {agents.map(a => (
+                <div key={a.id} className="p-3 rounded-xl border border-line bg-bg/50">
+                  <div className="flex items-center gap-2">
+                    <div className="w-1.5 h-1.5 rounded-full bg-amber" />
+                    <span className="text-[10px] font-code text-dim truncate">{a.id.slice(0, 20)}</span>
+                  </div>
+                  <p className="text-[11px] text-gray mt-1 truncate">{a.task}</p>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Quick links */}
+        <div className="p-5">
+          <h2 className="text-[11px] font-semibold text-dim uppercase tracking-widest mb-4">Navigate</h2>
+          <div className="space-y-1">
             {[
-              { to: "/chat", icon: MessageCircle, label: "Chat" },
-              { to: "/projects", icon: FolderKanban, label: "Projects" },
-              { to: "/agents", icon: Bot, label: "Agents" },
-              { to: "/projects", icon: CheckSquare, label: "Tasks" },
+              { to: "/chat", icon: MessageCircle, label: "Open Chat" },
+              { to: "/projects", icon: FolderKanban, label: "All Projects" },
+              { to: "/agents", icon: Bot, label: "Agent Monitor" },
             ].map(({ to, icon: Icon, label }) => (
-              <Link key={label} to={to} className="glass glass-hover rounded-2xl p-5 flex flex-col items-center gap-3 transition-all duration-300 group">
-                <Icon size={20} className="text-text-muted group-hover:text-accent transition-colors duration-300" strokeWidth={1.5} />
-                <span className="text-xs font-medium text-text-secondary group-hover:text-text-primary transition-colors">{label}</span>
+              <Link key={to} to={to} className="flex items-center gap-3 px-3 py-2 rounded-lg text-xs text-dim hover:text-white hover:bg-elevated transition-colors group">
+                <Icon size={14} />
+                <span>{label}</span>
+                <ArrowRight size={12} className="ml-auto opacity-0 group-hover:opacity-100 transition-opacity" />
               </Link>
             ))}
           </div>
         </div>
       </div>
-
-      <div className="animate-fade-up delay-3">
-        <Link to="/chat" className="block glass glass-hover rounded-2xl px-6 py-4 transition-all duration-300 group">
-          <div className="flex items-center justify-between">
-            <span className="text-sm text-text-muted group-hover:text-text-secondary transition-colors">Message Rue...</span>
-            <div className="w-8 h-8 rounded-lg bg-accent/10 group-hover:bg-accent flex items-center justify-center transition-all duration-300">
-              <ArrowRight size={14} className="text-accent group-hover:text-bg transition-colors" />
-            </div>
-          </div>
-        </Link>
-      </div>
     </div>
-  );
-}
-
-function Label({ children }: { children: string }) {
-  return (
-    <h2 className="text-[11px] font-semibold text-text-muted uppercase tracking-[0.15em] mb-3">{children}</h2>
   );
 }

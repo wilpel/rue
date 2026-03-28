@@ -31,23 +31,17 @@ export function ClientProvider({ children }: { children: ReactNode }) {
   }, [client]);
 
   if (error) return (
-    <div className="h-screen flex items-center justify-center bg-bg relative overflow-hidden">
-      <div className="orb orb-1" /><div className="orb orb-2" />
-      <div className="text-center p-12 z-10 relative">
-        <div className="w-3 h-3 rounded-full bg-error mx-auto mb-6" />
-        <p className="text-lg text-text-primary mb-2 font-medium">Cannot connect to Rue</p>
-        <p className="text-text-muted text-sm">Start the daemon: <code className="font-mono text-accent bg-glass px-2 py-0.5 rounded text-xs">rue daemon start</code></p>
+    <div className="h-screen flex items-center justify-center bg-bg">
+      <div className="text-center">
+        <p className="text-white text-base mb-2">Cannot connect to Rue</p>
+        <p className="text-dim text-sm">Run <code className="font-code text-amber">rue daemon start</code></p>
       </div>
     </div>
   );
 
   if (!ready) return (
-    <div className="h-screen flex items-center justify-center bg-bg relative overflow-hidden">
-      <div className="orb orb-1" /><div className="orb orb-2" />
-      <div className="text-center z-10 relative">
-        <div className="w-2.5 h-2.5 rounded-full bg-accent animate-breathe mx-auto mb-4" />
-        <p className="text-text-muted text-sm">Connecting...</p>
-      </div>
+    <div className="h-screen flex items-center justify-center bg-bg">
+      <p className="text-dim text-sm">Connecting...</p>
     </div>
   );
 
