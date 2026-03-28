@@ -19,37 +19,55 @@ export class ContextAssembler {
   assemble(task: string): string {
     const sections: string[] = [];
 
-    sections.push(`## Identity\n${this.deps.identity.toPromptText()}`);
-    sections.push(`## User\n${this.deps.userModel.toPromptText()}`);
-    sections.push(`## Knowledge\n${this.deps.semantic.toPromptText(task, 15)}`);
-    sections.push(`## Current State\n${this.deps.working.toPromptText()}`);
-
-    // Discover and describe skills
-    const skillsPrompt = this.discoverSkills();
-    if (skillsPrompt) {
-      sections.push(skillsPrompt);
+    // Load SYSTEM.md — the primary system guide
+    const systemMd = this.readProjectFile("SYSTEM.md");
+    if (systemMd) {
+      sections.push(systemMd);
     }
 
-    sections.push(`## Communication Style
-When you spawn agents or use tools to accomplish tasks:
-- Tell the user what you're doing and why: "I'll look into that" / "Let me check..."
-- When spawning an agent, briefly say what it will do
-- Give updates as work progresses
-- When done, summarize what was accomplished
-- Be conversational and direct, not robotic
-- Keep the user informed but don't over-explain`);
+    // Load PERSONALITY.md
+    const personalityMd = this.readProjectFile("PERSONALITY.md");
+    if (personalityMd) {
+      sections.push(personalityMd);
+    }
 
-    sections.push(`## Creating New Skills
-You can create new skills by creating a new directory under the skills/ folder.
-Each skill needs:
-1. A SKILL.md file describing what it does, how to use it, when to use it
-2. A run.ts file that is a standalone CLI tool (run with: tsx skills/<name>/run.ts <args>)
+    // Dynamic identity (evolves over time)
+    const identityText = this.deps.identity.toPromptText();
+    if (identityText) {
+      sections.push(`## Dynamic Identity\n${identityText}`);
+    }
 
-The skill should be self-contained and documented. Other agents (or you in the future) should be able to understand and use it just by reading SKILL.md.
+    // User model
+    const userText = this.deps.userModel.toPromptText();
+    if (userText) {
+      sections.push(`## User\n${userText}`);
+    }
 
-When the user asks you to do something that could be a reusable skill, consider creating one.`);
+    // Relevant knowledge from semantic memory
+    const semanticText = this.deps.semantic.toPromptText(task, 15);
+    if (semanticText && !semanticText.startsWith("No relevant")) {
+      sections.push(`## Knowledge\n${semanticText}`);
+    }
+
+    // Current working state
+    const workingText = this.deps.working.toPromptText();
+    if (workingText && !workingText.startsWith("No active")) {
+      sections.push(`## Current State\n${workingText}`);
+    }
+
+    // Discover skills and append summary
+    const skillsSummary = this.discoverSkills();
+    if (skillsSummary) {
+      sections.push(skillsSummary);
+    }
 
     return sections.join("\n\n");
+  }
+
+  private readProjectFile(filename: string): string | null {
+    const filePath = path.join(this.deps.projectDir, filename);
+    if (!fs.existsSync(filePath)) return null;
+    return fs.readFileSync(filePath, "utf-8").trim();
   }
 
   private discoverSkills(): string | null {
@@ -65,7 +83,6 @@ When the user asks you to do something that could be a reusable skill, consider 
       if (!fs.existsSync(skillMd)) continue;
 
       const content = fs.readFileSync(skillMd, "utf-8");
-      // Extract first paragraph after heading
       const lines = content.split("\n");
       let description = "";
       let foundHeading = false;
@@ -80,16 +97,15 @@ When the user asks you to do something that could be a reusable skill, consider 
     if (skills.length === 0) return null;
 
     const lines = [
-      "## Rue Skills",
-      `You have ${skills.length} skill(s) available. Each skill is a CLI tool in the skills/ directory.`,
-      "To use a skill, read its SKILL.md for instructions, then run its CLI tool via Bash.",
-      "To list all skills: `node --import tsx/esm skills/list-skills/run.ts`\n",
+      "## Detected Skills",
+      `Found ${skills.length} skill(s) in the skills/ directory:\n`,
     ];
 
     for (const skill of skills) {
       lines.push(`- **${skill.name}**: ${skill.description}`);
-      lines.push(`  Usage: Read \`skills/${skill.name}/SKILL.md\` then run via Bash: \`node --import tsx/esm skills/${skill.name}/run.ts <command>\``);
     }
+
+    lines.push("\nTo use a skill, read its SKILL.md for exact usage, then run via Bash.");
 
     return lines.join("\n");
   }
