@@ -19,14 +19,14 @@ export class ContextAssembler {
   assemble(task: string): string {
     const sections: string[] = [];
 
-    // Load SYSTEM.md — the primary system guide
-    const systemMd = this.readProjectFile("SYSTEM.md");
+    // Load prompts/SYSTEM.md — the primary system guide
+    const systemMd = this.readProjectFile("prompts/SYSTEM.md");
     if (systemMd) {
       sections.push(systemMd);
     }
 
-    // Load PERSONALITY.md
-    const personalityMd = this.readProjectFile("PERSONALITY.md");
+    // Load prompts/PERSONALITY.md
+    const personalityMd = this.readProjectFile("prompts/PERSONALITY.md");
     if (personalityMd) {
       sections.push(personalityMd);
     }
