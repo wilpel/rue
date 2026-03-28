@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { ClientProvider } from "./lib/context";
 import { Layout } from "./components/Layout";
+import { DashboardPage } from "./pages/DashboardPage";
 import { ChatPage } from "./pages/ChatPage";
 import { ProjectsPage } from "./pages/ProjectsPage";
 import { AgentsPage } from "./pages/AgentsPage";
@@ -12,7 +13,7 @@ export default function App() {
       <ClientProvider>
         <Routes>
           <Route element={<Layout />}>
-            <Route index element={<ChatPage />} />
+            <Route index element={<DashboardPage />} />
             <Route path="chat" element={<ChatPage />} />
             <Route path="projects/*" element={<ProjectsPage />} />
             <Route path="agents" element={<AgentsPage />} />

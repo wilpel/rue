@@ -1,5 +1,5 @@
 import { Outlet, NavLink, Link, useLocation } from "react-router-dom";
-import { FolderKanban, Bot, Settings, PanelLeftClose, PanelLeft, Plus, ChevronDown } from "lucide-react";
+import { FolderKanban, Bot, Settings, PanelLeftClose, PanelLeft, Plus, ChevronDown, LayoutDashboard, MessageCircle } from "lucide-react";
 import { useState, useEffect } from "react";
 import { api } from "../lib/api";
 
@@ -43,6 +43,8 @@ export function Layout() {
 
         {/* Nav links */}
         <div className="p-2 space-y-0.5">
+          <SidebarLink to="/" icon={LayoutDashboard} label="Dashboard" collapsed={collapsed} end />
+          <SidebarLink to="/chat" icon={MessageCircle} label="Chat" collapsed={collapsed} />
           <SidebarLink to="/projects" icon={FolderKanban} label="Projects" collapsed={collapsed} />
           <SidebarLink to="/agents" icon={Bot} label="Agents" collapsed={collapsed} />
           <SidebarLink to="/settings" icon={Settings} label="Settings" collapsed={collapsed} />
@@ -77,9 +79,9 @@ export function Layout() {
   );
 }
 
-function SidebarLink({ to, icon: Icon, label, collapsed }: { to: string; icon: React.ComponentType<{size?: number}>; label: string; collapsed: boolean }) {
+function SidebarLink({ to, icon: Icon, label, collapsed, end }: { to: string; icon: React.ComponentType<{size?: number}>; label: string; collapsed: boolean; end?: boolean }) {
   return (
-    <NavLink to={to} className={({ isActive }) =>
+    <NavLink to={to} end={end} className={({ isActive }) =>
       `flex items-center gap-3 ${collapsed ? "justify-center" : ""} px-3 py-2 rounded-lg text-[13px] transition-colors ${
         isActive ? "bg-accent-soft text-accent" : "text-muted hover:text-secondary hover:bg-hover"
       }`

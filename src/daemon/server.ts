@@ -201,6 +201,16 @@ export class DaemonServer {
         return;
       }
 
+      // GET /api/dashboard — combined data for dashboard page
+      if (pathname === "/api/dashboard" && req.method === "GET") {
+        const agents = this.supervisor.listAgents();
+        const projects = this.getProjects();
+        const recentMessages = this.messages.recent(10);
+        const events = this.persistence.readTail(30).reverse();
+        json({ agents: agents.map(a => ({ id: a.id, task: a.config.task, state: a.state, lane: a.config.lane })), projects, recentMessages, events });
+        return;
+      }
+
       // Default: not an API route
       if (pathname.startsWith("/api/")) {
         json({ error: "Not found" }, 404);
