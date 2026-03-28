@@ -11,6 +11,16 @@ export function createCLI(): Command {
   const program = new Command();
   program.name("rue").description("Rue Bot — your AI agent daemon").version("0.1.0");
 
+  // Default action: launch TUI when no subcommand given
+  program
+    .command("chat", { isDefault: true })
+    .description("Open interactive chat TUI (default)")
+    .action(async () => {
+      const config = loadConfig(CONFIG_PATH);
+      const { startTUI } = await import("./tui/index.js");
+      await startTUI(`ws://localhost:${config.port}`);
+    });
+
   program
     .command("ask <text>")
     .description("Send a task to the daemon")
@@ -19,10 +29,12 @@ export function createCLI(): Command {
       const client = new DaemonClient(`ws://localhost:${config.port}`);
       try {
         await client.connect();
-        const result = await client.ask(text, {
+        await client.ask(text, {
           onStream: (chunk) => process.stdout.write(chunk),
         });
-        console.log("\n" + result.output);
+        console.log(""); // newline after streamed output
+        client.disconnect();
+        process.exit(0);
       } catch (err) {
         console.error(`Error: ${err instanceof Error ? err.message : err}`);
         process.exit(1);
