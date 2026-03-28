@@ -39,9 +39,43 @@ export function App({ client }: AppProps) {
     }
   });
 
+  // Load message history on startup
+  useEffect(() => {
+    client.history(15).then((result) => {
+      const restored: ChatMessage[] = result.messages.map((m) => {
+        if (m.role === "agent-event" && m.metadata) {
+          return {
+            id: m.id,
+            role: "agent-event" as const,
+            content: m.content,
+            timestamp: m.timestamp,
+            agentActivity: {
+              id: (m.metadata.agentId as string) ?? m.id,
+              task: m.content,
+              state: "completed" as const,
+              startedAt: m.timestamp,
+              lane: "sub",
+            },
+          };
+        }
+        return {
+          id: m.id,
+          role: m.role as ChatMessage["role"],
+          content: m.content,
+          timestamp: m.timestamp,
+        };
+      });
+      if (restored.length > 0) {
+        setMessages(restored);
+      }
+    }).catch(() => {
+      // History not available — start fresh
+    });
+  }, [client]);
+
   // Subscribe to agent events from the daemon
   useEffect(() => {
-    client.subscribe(["agent:*", "task:*"]);
+    client.subscribe(["agent:*", "task:*", "message:*"]);
 
     const unsub = client.onEvent((channel, payload) => {
       const data = payload as Record<string, unknown>;

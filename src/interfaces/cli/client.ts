@@ -63,6 +63,11 @@ export class DaemonClient {
     return this.sendCmd(id, "agents", {}) as Promise<{ agents: unknown[] }>;
   }
 
+  async history(limit = 20): Promise<{ messages: Array<{ id: string; role: string; content: string; timestamp: number; metadata?: Record<string, unknown> }> }> {
+    const id = frameId();
+    return this.sendCmd(id, "history", { limit }) as Promise<{ messages: Array<{ id: string; role: string; content: string; timestamp: number; metadata?: Record<string, unknown> }> }>;
+  }
+
   steer(agentId: string, message: string): void {
     this.send({ type: "steer", agentId, message });
   }

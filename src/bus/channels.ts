@@ -17,6 +17,7 @@ export interface BusChannels {
   "interface:input": { source: string; text: string };
   "interface:output": { target: string; text: string };
   "interface:stream": { agentId: string; chunk: string };
+  "message:created": { id: string; role: string; content: string; timestamp: number; sessionId?: string; metadata?: Record<string, unknown> };
 }
 
 export type ChannelName = keyof BusChannels;

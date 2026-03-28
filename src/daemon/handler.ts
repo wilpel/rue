@@ -2,6 +2,7 @@ import type { EventBus } from "../bus/bus.js";
 import type { AgentSupervisor } from "../agents/supervisor.js";
 import type { Planner } from "../cortex/prefrontal/planner.js";
 import type { ContextAssembler } from "../cortex/limbic/memory/assembler.js";
+import type { MessageStore } from "../messages/store.js";
 import type { ClientFrame, DaemonFrame } from "./protocol.js";
 import type { WebSocket } from "ws";
 import { serializeDaemonFrame } from "./protocol.js";
@@ -11,6 +12,7 @@ export interface HandlerDeps {
   supervisor: AgentSupervisor;
   planner: Planner;
   assembler: ContextAssembler;
+  messages: MessageStore;
 }
 
 // Track session per WebSocket connection for conversation continuity
@@ -51,6 +53,10 @@ async function handleCmd(
         const workdir = (frame.args.workdir as string) ?? process.cwd();
         const existingSessionId = sessionMap.get(ws);
 
+        // Persist user message
+        deps.messages.append({ role: "user", content: text });
+        deps.bus.emit("message:created", { id: "", role: "user", content: text, timestamp: Date.now() });
+
         try {
           const { query } = await import("@anthropic-ai/claude-agent-sdk");
 
@@ -69,14 +75,12 @@ async function handleCmd(
               maxTurns: 50,
               abortController: new AbortController(),
               includePartialMessages: true,
-              // Resume previous session for conversation continuity
               ...(existingSessionId ? { resume: existingSessionId } : {}),
             },
           });
 
           let allText = "";
           let cost = 0;
-          // Track how much text was delivered via streaming per turn
           let streamedInCurrentTurn = 0;
 
           for await (const message of q) {
@@ -112,32 +116,30 @@ async function handleCmd(
                 };
                 const content = assistantMsg.message.content;
 
-                // Extract text from this message
                 const fullText = content
                   .filter((b) => b.type === "text")
                   .map((b) => b.text ?? "")
                   .join("");
 
-                // If streaming didn't deliver this text (fallback for non-streamed turns),
-                // send it now. This handles multi-turn flows where Claude responds
-                // after tool results.
                 if (fullText && streamedInCurrentTurn === 0) {
                   allText += fullText;
                   send({ type: "stream", agentId: "main", chunk: fullText });
                 }
 
-                // Reset for next turn
                 streamedInCurrentTurn = 0;
 
-                // Detect Agent tool calls
                 for (const block of content) {
                   if (block.type === "tool_use" && block.name === "Agent") {
                     const input = block.input as { description?: string; prompt?: string } | undefined;
                     const desc = input?.description ?? input?.prompt ?? "running task";
-                    deps.bus.emit("agent:spawned", {
-                      id: block.id ?? `sub-${Date.now()}`,
-                      task: desc,
-                      lane: "sub",
+                    const agentId = block.id ?? `sub-${Date.now()}`;
+                    deps.bus.emit("agent:spawned", { id: agentId, task: desc, lane: "sub" });
+
+                    // Persist agent event
+                    deps.messages.append({
+                      role: "agent-event",
+                      content: desc,
+                      metadata: { agentId, state: "spawned" },
                     });
                   }
                 }
@@ -145,17 +147,12 @@ async function handleCmd(
               }
 
               case "user": {
-                // Tool results come back as user messages — detect Agent completions
                 const userMsg = message as {
                   message: { content: Array<{ type: string; tool_use_id?: string }> };
                 };
                 for (const block of userMsg.message.content) {
                   if (block.type === "tool_result" && block.tool_use_id) {
-                    deps.bus.emit("agent:completed", {
-                      id: block.tool_use_id,
-                      result: "",
-                      cost: 0,
-                    });
+                    deps.bus.emit("agent:completed", { id: block.tool_use_id, result: "", cost: 0 });
                   }
                 }
                 break;
@@ -174,7 +171,6 @@ async function handleCmd(
                   sessionMap.set(ws, resultMsg.session_id);
                 }
 
-                // Final fallback — if somehow nothing was sent yet
                 if (resultMsg.subtype === "success" && resultMsg.result && !allText) {
                   allText = resultMsg.result;
                   send({ type: "stream", agentId: "main", chunk: resultMsg.result });
@@ -184,15 +180,22 @@ async function handleCmd(
             }
           }
 
-          send({
-            type: "result",
-            id: frame.id,
-            data: { output: allText, cost },
-          });
+          // Persist assistant response
+          deps.messages.append({ role: "assistant", content: allText });
+          deps.bus.emit("message:created", { id: "", role: "assistant", content: allText, timestamp: Date.now() });
+
+          send({ type: "result", id: frame.id, data: { output: allText, cost } });
         } catch (sdkError) {
           const message = sdkError instanceof Error ? sdkError.message : String(sdkError);
           send({ type: "error", id: frame.id, code: "SDK_ERROR", message });
         }
+        break;
+      }
+
+      case "history": {
+        const limit = (frame.args.limit as number) ?? 20;
+        const messages = deps.messages.recent(limit);
+        send({ type: "result", id: frame.id, data: { messages } });
         break;
       }
 
@@ -215,21 +218,12 @@ async function handleCmd(
       }
 
       case "agents": {
-        send({
-          type: "result",
-          id: frame.id,
-          data: { agents: deps.supervisor.listAgents() },
-        });
+        send({ type: "result", id: frame.id, data: { agents: deps.supervisor.listAgents() } });
         break;
       }
 
       default:
-        send({
-          type: "error",
-          id: frame.id,
-          code: "UNKNOWN_CMD",
-          message: `Unknown command: ${frame.cmd}`,
-        });
+        send({ type: "error", id: frame.id, code: "UNKNOWN_CMD", message: `Unknown command: ${frame.cmd}` });
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

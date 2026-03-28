@@ -9,6 +9,7 @@ import { IdentityCore } from "../cortex/limbic/identity/core.js";
 import { UserModel } from "../cortex/limbic/identity/user-model.js";
 import { ContextAssembler } from "../cortex/limbic/memory/assembler.js";
 import { EventPersistence } from "../bus/persistence.js";
+import { MessageStore } from "../messages/store.js";
 import { createHandler } from "./handler.js";
 import { parseClientFrame, serializeDaemonFrame } from "./protocol.js";
 import * as path from "node:path";
@@ -25,6 +26,7 @@ export class DaemonServer {
   private supervisor: AgentSupervisor;
   private planner: Planner;
   private persistence: EventPersistence;
+  private messages: MessageStore;
   private semantic: SemanticMemory;
   private working: WorkingMemory;
   private identity: IdentityCore;
@@ -36,6 +38,7 @@ export class DaemonServer {
     this.lanes = new LaneQueue({ main: 1, sub: 6, cron: 2, skill: 2 });
     this.supervisor = new AgentSupervisor(this.bus, this.lanes);
     this.persistence = new EventPersistence(path.join(config.dataDir, "events"));
+    this.messages = new MessageStore(path.join(config.dataDir, "messages"));
     this.semantic = new SemanticMemory(path.join(config.dataDir, "memory", "semantic"));
     this.working = new WorkingMemory();
     this.identity = new IdentityCore(path.join(config.dataDir, "identity"));
@@ -59,6 +62,7 @@ export class DaemonServer {
       supervisor: this.supervisor,
       planner: this.planner,
       assembler: this.assembler,
+      messages: this.messages,
     });
 
     this.wss.on("connection", (ws: WebSocket) => {
@@ -83,6 +87,7 @@ export class DaemonServer {
     this.bus.emit("system:shutdown", { reason: "shutdown requested" });
     this.supervisor.shutdown();
     this.semantic.close();
+    this.messages.close();
     this.persistence.close();
     if (this.wss) {
       for (const client of this.wss.clients) {
