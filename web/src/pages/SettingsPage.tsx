@@ -1,26 +1,24 @@
 export function SettingsPage() {
   return (
     <div className="h-screen flex flex-col">
-      <div className="border-b border-[#1a1a1a] bg-[#0e0e0e] px-6 py-4">
-        <h1 className="text-lg font-semibold text-[#e5e5e5]">Settings</h1>
+      <div className="border-b border-border-subtle bg-surface-1/50 px-6 py-3.5">
+        <h1 className="text-sm font-semibold text-text-secondary tracking-wide">Settings</h1>
       </div>
       <div className="flex-1 p-6">
-        <div className="max-w-2xl">
-          <div className="bg-[#141414] rounded-xl border border-[#1a1a1a] p-6">
-            <h2 className="font-semibold text-[#e5e5e5] mb-4">Daemon</h2>
-            <div className="space-y-3 text-sm">
-              <div className="flex justify-between">
-                <span className="text-[#888]">Status</span>
-                <span className="text-[#4ade80] font-medium">Connected</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-[#888]">Endpoint</span>
-                <span className="text-[#aaa] font-mono">ws://localhost:18800</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-[#888]">Version</span>
-                <span className="text-[#aaa]">0.1.0</span>
-              </div>
+        <div className="max-w-lg animate-fade-in">
+          <div className="bg-surface-1 rounded-xl border border-border-subtle p-6">
+            <h2 className="text-xs font-semibold text-text-secondary uppercase tracking-[0.1em] mb-5">Daemon</h2>
+            <div className="space-y-4">
+              {[
+                { label: "Status", value: "Connected", valueClass: "text-success" },
+                { label: "Endpoint", value: "ws://localhost:18800", valueClass: "font-mono text-text-muted" },
+                { label: "Version", value: "0.1.0", valueClass: "text-text-muted" },
+              ].map(({ label, value, valueClass }) => (
+                <div key={label} className="flex justify-between items-center">
+                  <span className="text-xs text-text-muted">{label}</span>
+                  <span className={`text-xs ${valueClass}`}>{value}</span>
+                </div>
+              ))}
             </div>
           </div>
         </div>

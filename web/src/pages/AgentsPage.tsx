@@ -1,51 +1,40 @@
 import { useEffect, useState } from "react";
-import { useClient } from "../lib/context";
 import { Bot } from "lucide-react";
-
-interface Agent {
-  id: string;
-  task: string;
-  state: string;
-  lane: string;
-}
+import { api, type DaemonStatus } from "../lib/api";
 
 export function AgentsPage() {
-  const client = useClient();
-  const [agents, setAgents] = useState<Agent[]>([]);
+  const [agents, setAgents] = useState<DaemonStatus["agents"]>([]);
 
   useEffect(() => {
-    const load = () => {
-      client.status().then((r) => setAgents(r.agents as Agent[])).catch(() => {});
-    };
+    const load = () => api.daemonStatus().then(r => setAgents(r.agents)).catch(() => {});
     load();
     const interval = setInterval(load, 3000);
     return () => clearInterval(interval);
-  }, [client]);
+  }, []);
 
   return (
     <div className="h-screen flex flex-col">
-      <div className="border-b border-[#1a1a1a] bg-[#0e0e0e] px-6 py-4">
-        <h1 className="text-lg font-semibold text-[#e5e5e5]">Agents</h1>
+      <div className="border-b border-border-subtle bg-surface-1/50 px-6 py-3.5">
+        <h1 className="text-sm font-semibold text-text-secondary tracking-wide">Agents</h1>
       </div>
-
       <div className="flex-1 overflow-y-auto p-6">
         {agents.length === 0 ? (
-          <div className="text-center py-20">
-            <Bot size={48} className="mx-auto text-[#333] mb-4" />
-            <p className="text-[#888] mb-2">No active agents</p>
-            <p className="text-[#555] text-sm">Agents appear here when Rue spawns them for tasks</p>
+          <div className="text-center py-24 animate-fade-in">
+            <Bot size={32} className="mx-auto text-text-muted/20 mb-4" strokeWidth={1} />
+            <p className="text-text-muted text-sm mb-1">No active agents</p>
+            <p className="text-text-muted/60 text-xs">Agents appear here when Rue spawns them</p>
           </div>
         ) : (
-          <div className="space-y-3">
-            {agents.map((agent) => (
-              <div key={agent.id} className="bg-[#141414] rounded-xl border border-[#1a1a1a] p-4">
-                <div className="flex items-center gap-3">
-                  <div className="w-2 h-2 rounded-full bg-[#c8a050] animate-pulse" />
-                  <span className="font-mono text-xs text-[#666]">{agent.id}</span>
-                  <span className="text-xs px-2 py-0.5 bg-[#1a1a1a] text-[#c8a050] rounded-full border border-[#2a2a2a]">{agent.lane}</span>
-                  <span className="text-xs px-2 py-0.5 bg-[#1a1a1a] text-[#888] rounded-full border border-[#2a2a2a]">{agent.state}</span>
+          <div className="max-w-2xl space-y-3">
+            {agents.map(agent => (
+              <div key={agent.id} className="bg-surface-1 rounded-xl border border-border-subtle p-4 animate-slide-in">
+                <div className="flex items-center gap-3 mb-2">
+                  <div className="w-1.5 h-1.5 rounded-full bg-gold animate-pulse-gold" />
+                  <span className="font-mono text-[10px] text-text-muted">{agent.id}</span>
+                  <span className="text-[10px] px-2 py-0.5 bg-gold/10 text-gold rounded-full font-medium">{agent.lane}</span>
+                  <span className="text-[10px] px-2 py-0.5 bg-surface-3 text-text-muted rounded-full">{agent.state}</span>
                 </div>
-                <p className="text-sm text-[#aaa] mt-2 ml-5">{agent.task}</p>
+                <p className="text-xs text-text-secondary ml-[18px]">{agent.task}</p>
               </div>
             ))}
           </div>

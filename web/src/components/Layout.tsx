@@ -1,7 +1,7 @@
 import { Outlet, NavLink } from "react-router-dom";
 import { Home, MessageCircle, FolderKanban, Bot, Settings } from "lucide-react";
 
-const navItems = [
+const nav = [
   { to: "/", icon: Home, label: "Home" },
   { to: "/chat", icon: MessageCircle, label: "Chat" },
   { to: "/projects", icon: FolderKanban, label: "Projects" },
@@ -10,43 +10,51 @@ const navItems = [
 
 export function Layout() {
   return (
-    <div className="min-h-screen bg-[#0a0a0a] text-[#e5e5e5] flex">
-      <nav className="w-56 bg-[#0e0e0e] border-r border-[#1a1a1a] p-4 flex flex-col gap-1">
-        <div className="px-3 py-4 mb-4">
-          <h1 className="text-2xl font-bold text-[#c8a050]">rue</h1>
-          <p className="text-xs text-[#555] mt-1">your ai companion</p>
+    <div className="min-h-screen bg-surface flex">
+      {/* Gold accent line at very top */}
+      <div className="fixed top-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-gold/40 to-transparent z-50" />
+
+      <nav className="w-52 bg-surface-1 border-r border-border-subtle flex flex-col p-3 pt-6">
+        <div className="px-3 mb-8 flex items-center gap-2.5">
+          <div className="w-2 h-2 rounded-full bg-gold animate-pulse-gold" />
+          <span className="text-lg font-semibold text-gold tracking-wide">rue</span>
         </div>
-        {navItems.map(({ to, icon: Icon, label }) => (
-          <NavLink
-            key={to}
-            to={to}
-            end={to === "/"}
-            className={({ isActive }) =>
-              `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-                isActive
-                  ? "bg-[#1a1a1a] text-[#c8a050]"
-                  : "text-[#888] hover:bg-[#141414] hover:text-[#e5e5e5]"
-              }`
-            }
-          >
-            <Icon size={18} />
-            {label}
-          </NavLink>
-        ))}
+
+        <div className="flex flex-col gap-0.5">
+          {nav.map(({ to, icon: Icon, label }) => (
+            <NavLink
+              key={to}
+              to={to}
+              end={to === "/"}
+              className={({ isActive }) =>
+                `flex items-center gap-3 px-3 py-2 rounded-lg text-[13px] font-medium transition-all duration-200 ${
+                  isActive
+                    ? "bg-gold/10 text-gold"
+                    : "text-text-muted hover:text-text-secondary hover:bg-surface-2"
+                }`
+              }
+            >
+              <Icon size={16} strokeWidth={1.5} />
+              {label}
+            </NavLink>
+          ))}
+        </div>
+
         <div className="mt-auto">
           <NavLink
             to="/settings"
             className={({ isActive }) =>
-              `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-                isActive ? "bg-[#1a1a1a] text-[#c8a050]" : "text-[#888] hover:bg-[#141414] hover:text-[#e5e5e5]"
+              `flex items-center gap-3 px-3 py-2 rounded-lg text-[13px] font-medium transition-all duration-200 ${
+                isActive ? "bg-gold/10 text-gold" : "text-text-muted hover:text-text-secondary hover:bg-surface-2"
               }`
             }
           >
-            <Settings size={18} />
+            <Settings size={16} strokeWidth={1.5} />
             Settings
           </NavLink>
         </div>
       </nav>
+
       <main className="flex-1 overflow-auto">
         <Outlet />
       </main>

@@ -7,10 +7,14 @@ export default defineConfig({
   server: {
     port: 3100,
     proxy: {
-      '/api/ws': {
+      '/api': {
+        target: 'http://127.0.0.1:18800',
+        changeOrigin: true,
+      },
+      '/ws': {
         target: 'http://127.0.0.1:18800',
         ws: true,
-        rewrite: (path) => path.replace(/^\/api\/ws/, ''),
+        rewrite: (path) => path.replace(/^\/ws/, ''),
       },
     },
   },

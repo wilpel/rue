@@ -14,7 +14,6 @@ export function ClientProvider({ children }: { children: ReactNode }) {
   const [ready, setReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Create client once, persist across StrictMode re-mounts
   if (!clientRef.current) {
     clientRef.current = new RueClient();
   }
@@ -29,27 +28,30 @@ export function ClientProvider({ children }: { children: ReactNode }) {
       setReady(true);
     }).catch(() => {
       if (cancelled) return;
-      setError("Cannot connect to Rue daemon. Is it running?");
+      setError("Cannot connect to Rue daemon.");
     });
 
-    return () => {
-      cancelled = true;
-      // Don't disconnect on StrictMode re-mount — only on real unmount
-    };
+    return () => { cancelled = true; };
   }, [client]);
 
   if (error) return (
-    <div className="min-h-screen flex items-center justify-center bg-amber-50">
-      <div className="text-center p-8">
-        <p className="text-xl text-stone-700 mb-2">Cannot connect to Rue</p>
-        <p className="text-stone-500">Start the daemon: <code className="bg-stone-100 px-2 py-1 rounded">rue daemon start</code></p>
+    <div className="min-h-screen flex items-center justify-center bg-surface">
+      <div className="text-center p-12 animate-fade-in">
+        <div className="w-3 h-3 rounded-full bg-error mx-auto mb-6" />
+        <p className="text-lg text-text mb-2 font-medium">Cannot connect to Rue</p>
+        <p className="text-text-muted text-sm">
+          Start the daemon: <code className="font-mono text-gold bg-surface-2 px-2 py-0.5 rounded text-xs">rue daemon start</code>
+        </p>
       </div>
     </div>
   );
 
   if (!ready) return (
-    <div className="min-h-screen flex items-center justify-center bg-amber-50">
-      <p className="text-stone-500 animate-pulse">Connecting to Rue...</p>
+    <div className="min-h-screen flex items-center justify-center bg-surface">
+      <div className="text-center animate-fade-in">
+        <div className="w-2 h-2 rounded-full bg-gold animate-pulse-gold mx-auto mb-4" />
+        <p className="text-text-muted text-sm">Connecting to Rue...</p>
+      </div>
     </div>
   );
 

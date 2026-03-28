@@ -23,23 +23,26 @@ export class RueClient {
   private pending = new Map<string, PendingRequest>();
   private eventHandlers: EventHandler[] = [];
   private _connected = false;
+  private connectPromise: Promise<void> | null = null;
 
   get connected(): boolean { return this._connected; }
 
-  private connectPromise: Promise<void> | null = null;
-
-  connect(url = "ws://127.0.0.1:18800"): Promise<void> {
-    // Already connected
+  connect(url?: string): Promise<void> {
     if (this._connected && this.ws?.readyState === WebSocket.OPEN) {
       return Promise.resolve();
     }
-    // Connection in progress — return same promise
     if (this.connectPromise) {
       return this.connectPromise;
     }
 
+    // Use Vite proxy path in dev, direct in production
+    if (!url) {
+      const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+      url = `${protocol}//${window.location.host}/ws`;
+    }
+
     this.connectPromise = new Promise<void>((resolve, reject) => {
-      this.ws = new WebSocket(url);
+      this.ws = new WebSocket(url!);
       this.ws.onopen = () => { this._connected = true; this.connectPromise = null; resolve(); };
       this.ws.onerror = () => { this.connectPromise = null; reject(new Error("Connection failed")); };
       this.ws.onclose = () => { this._connected = false; this.connectPromise = null; };

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { Send } from "lucide-react";
 import { useClient } from "../lib/context";
 
 interface Message {
@@ -35,20 +36,20 @@ export function ChatPage() {
     setInput("");
 
     const userMsg: Message = { id: `u-${Date.now()}`, role: "user", content: text, timestamp: Date.now() };
-    const assistantId = `a-${Date.now()}`;
-    const assistantMsg: Message = { id: assistantId, role: "assistant", content: "", timestamp: Date.now(), isStreaming: true };
+    const aId = `a-${Date.now()}`;
+    const assistantMsg: Message = { id: aId, role: "assistant", content: "", timestamp: Date.now(), isStreaming: true };
     setMessages(prev => [...prev, userMsg, assistantMsg]);
     setSending(true);
 
     try {
       const result = await client.ask(text, {
         onStream: (chunk) => {
-          setMessages(prev => prev.map(m => m.id === assistantId ? { ...m, content: m.content + chunk } : m));
+          setMessages(prev => prev.map(m => m.id === aId ? { ...m, content: m.content + chunk } : m));
         },
       });
-      setMessages(prev => prev.map(m => m.id === assistantId ? { ...m, content: m.content || result.output, isStreaming: false } : m));
+      setMessages(prev => prev.map(m => m.id === aId ? { ...m, content: m.content || result.output, isStreaming: false } : m));
     } catch (err) {
-      setMessages(prev => prev.map(m => m.id === assistantId ? { ...m, content: `Error: ${err}`, isStreaming: false } : m));
+      setMessages(prev => prev.map(m => m.id === aId ? { ...m, content: `Error: ${err}`, isStreaming: false } : m));
     } finally {
       setSending(false);
     }
@@ -56,52 +57,60 @@ export function ChatPage() {
 
   return (
     <div className="h-screen flex flex-col">
-      <div className="border-b border-[#1a1a1a] bg-[#0e0e0e] px-6 py-4">
-        <h1 className="text-lg font-semibold text-[#e5e5e5]">Chat</h1>
+      <div className="border-b border-border-subtle bg-surface-1/50 px-6 py-3.5">
+        <h1 className="text-sm font-semibold text-text-secondary tracking-wide">Chat</h1>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
-        {messages.length === 0 && (
-          <div className="text-center py-20">
-            <p className="text-[#555]">Start a conversation with Rue</p>
-          </div>
-        )}
-        {messages.map((msg) => (
-          <div key={msg.id} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
-            <div className={`max-w-[70%] rounded-2xl px-4 py-3 ${
-              msg.role === "user"
-                ? "bg-[#c8a050] text-[#0a0a0a]"
-                : msg.role === "system"
-                  ? "bg-[#1a1a1a] text-[#666] text-sm italic"
-                  : "bg-[#1a1a1a] border border-[#222] text-[#e5e5e5]"
-            }`}>
-              {msg.role === "assistant" && (
-                <p className="text-xs font-medium text-[#c8a050] mb-1">rue</p>
-              )}
-              <p className="whitespace-pre-wrap text-sm leading-relaxed">{msg.content || (msg.isStreaming ? "..." : "")}</p>
-              {msg.isStreaming && msg.content && (
-                <span className="inline-block w-2 h-4 bg-[#c8a050] rounded-sm ml-0.5 animate-pulse" />
-              )}
+      <div className="flex-1 overflow-y-auto px-6 py-6">
+        <div className="max-w-2xl mx-auto space-y-4">
+          {messages.length === 0 && (
+            <div className="text-center py-24 animate-fade-in">
+              <div className="w-2 h-2 rounded-full bg-gold/40 mx-auto mb-4" />
+              <p className="text-text-muted text-sm">Start a conversation with Rue</p>
             </div>
-          </div>
-        ))}
-        <div ref={endRef} />
+          )}
+          {messages.map((msg) => (
+            <div
+              key={msg.id}
+              className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"} animate-fade-in`}
+            >
+              <div className={`max-w-[75%] ${
+                msg.role === "user"
+                  ? "bg-gold text-surface rounded-2xl rounded-br-md px-4 py-2.5"
+                  : msg.role === "system"
+                    ? "text-text-muted text-xs italic px-2 py-1"
+                    : "bg-surface-2 border border-border-subtle rounded-2xl rounded-bl-md px-4 py-2.5"
+              }`}>
+                {msg.role === "assistant" && (
+                  <p className="text-[10px] font-semibold text-gold/60 uppercase tracking-wider mb-1.5">rue</p>
+                )}
+                <p className="text-sm leading-relaxed whitespace-pre-wrap">
+                  {msg.content || (msg.isStreaming ? "" : "")}
+                </p>
+                {msg.isStreaming && (
+                  <span className="inline-block w-1.5 h-4 bg-gold rounded-sm ml-0.5 animate-pulse-gold" />
+                )}
+              </div>
+            </div>
+          ))}
+          <div ref={endRef} />
+        </div>
       </div>
 
-      <form onSubmit={handleSubmit} className="border-t border-[#1a1a1a] bg-[#0e0e0e] p-4">
-        <div className="flex gap-3 max-w-3xl mx-auto">
+      <form onSubmit={handleSubmit} className="border-t border-border-subtle bg-surface-1/50 p-4">
+        <div className="max-w-2xl mx-auto flex gap-3">
           <input
             value={input}
             onChange={(e) => setInput(e.target.value)}
             placeholder="Type a message..."
-            className="flex-1 px-4 py-3 bg-[#141414] rounded-xl border border-[#1a1a1a] text-[#e5e5e5] placeholder-[#555] focus:outline-none focus:ring-2 focus:ring-[#c8a050]/30"
+            className="flex-1 px-4 py-3 bg-surface-2 rounded-xl border border-border text-text placeholder-text-muted text-sm focus:outline-none focus:border-gold/30 transition-colors"
           />
           <button
             type="submit"
             disabled={sending || !input.trim()}
-            className="px-5 py-3 bg-[#c8a050] hover:bg-[#d4ad5e] disabled:bg-[#333] text-[#0a0a0a] rounded-xl font-medium transition-colors"
+            className="px-4 py-3 bg-gold hover:bg-gold-bright disabled:bg-surface-3 disabled:text-text-muted text-surface font-medium rounded-xl transition-all duration-200"
           >
-            Send
+            <Send size={16} />
           </button>
         </div>
       </form>

@@ -1,4 +1,4 @@
-const API_BASE = "http://127.0.0.1:18800/api";
+const API_BASE = "/api";
 
 async function fetchJson<T>(path: string): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`);
@@ -54,6 +54,6 @@ export const api = {
   project: (name: string) => fetchJson<ProjectDetail>(`/projects/${encodeURIComponent(name)}`),
   projectTasks: (name: string) => fetchJson<Task[]>(`/projects/${encodeURIComponent(name)}/tasks`),
   projectDocs: (name: string) => fetchJson<ProjectDoc[]>(`/projects/${encodeURIComponent(name)}/docs`),
-  history: (limit = 50) => fetchJson<{ messages: unknown[] }>(`/history?limit=${limit}`),
+  history: (limit = 50) => fetchJson<{ messages: Array<{ id: string; role: string; content: string; timestamp: number }> }>(`/history?limit=${limit}`),
   daemonStatus: () => fetchJson<DaemonStatus>("/status"),
 };
