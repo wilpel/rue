@@ -22,7 +22,7 @@ describe("ContextAssembler", () => {
     working = new WorkingMemory();
     identity = new IdentityCore(path.join(tmpDir, "identity"));
     userModel = new UserModel(path.join(tmpDir, "identity"));
-    assembler = new ContextAssembler({ semantic, working, identity, userModel });
+    assembler = new ContextAssembler({ semantic, working, identity, userModel, projectDir: tmpDir });
   });
 
   afterEach(() => {

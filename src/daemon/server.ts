@@ -48,6 +48,7 @@ export class DaemonServer {
       working: this.working,
       identity: this.identity,
       userModel: this.userModel,
+      projectDir: process.cwd(),
     });
     this.planner = new Planner(this.bus, this.supervisor, {
       workdir: process.cwd(),
