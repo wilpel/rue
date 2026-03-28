@@ -15,8 +15,10 @@ export interface HandlerDeps {
   messages: MessageStore;
 }
 
-// Track session per WebSocket connection for conversation continuity
+// Track session per WebSocket connection for conversation continuity.
+// Also keep a global "last session" so new WS connections can resume.
 const sessionMap = new WeakMap<WebSocket, string>();
+let lastSessionId: string | undefined;
 
 export function createHandler(deps: HandlerDeps) {
   return async (frame: ClientFrame, ws: WebSocket): Promise<void> => {
@@ -51,7 +53,7 @@ async function handleCmd(
         const text = frame.args.text as string;
         const systemPrompt = deps.assembler.assemble(text);
         const workdir = (frame.args.workdir as string) ?? process.cwd();
-        const existingSessionId = sessionMap.get(ws);
+        const existingSessionId = sessionMap.get(ws) ?? lastSessionId;
 
         // Persist user message
         deps.messages.append({ role: "user", content: text });
@@ -89,6 +91,7 @@ async function handleCmd(
                 const sysMsg = message as { subtype?: string; session_id?: string };
                 if (sysMsg.subtype === "init" && sysMsg.session_id) {
                   sessionMap.set(ws, sysMsg.session_id);
+                  lastSessionId = sysMsg.session_id;
                 }
                 break;
               }
@@ -169,6 +172,7 @@ async function handleCmd(
 
                 if (resultMsg.session_id) {
                   sessionMap.set(ws, resultMsg.session_id);
+                  lastSessionId = resultMsg.session_id;
                 }
 
                 if (resultMsg.subtype === "success" && resultMsg.result && !allText) {
