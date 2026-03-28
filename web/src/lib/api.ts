@@ -43,10 +43,17 @@ export interface DaemonStatus {
   }>;
 }
 
+export interface ProjectDoc {
+  name: string;
+  path: string;
+  content: string;
+}
+
 export const api = {
   projects: () => fetchJson<ProjectSummary[]>("/projects"),
   project: (name: string) => fetchJson<ProjectDetail>(`/projects/${encodeURIComponent(name)}`),
   projectTasks: (name: string) => fetchJson<Task[]>(`/projects/${encodeURIComponent(name)}/tasks`),
+  projectDocs: (name: string) => fetchJson<ProjectDoc[]>(`/projects/${encodeURIComponent(name)}/docs`),
   history: (limit = 50) => fetchJson<{ messages: unknown[] }>(`/history?limit=${limit}`),
   daemonStatus: () => fetchJson<DaemonStatus>("/status"),
 };

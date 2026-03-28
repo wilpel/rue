@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
 import { useParams, Link } from "react-router-dom";
-import { ArrowLeft, Plus, User, Clock } from "lucide-react";
-import { api, type ProjectDetail, type Task } from "../lib/api";
+import { ArrowLeft, Plus, User, Clock, LayoutGrid, FileText } from "lucide-react";
+import { api, type ProjectDetail, type Task, type ProjectDoc } from "../lib/api";
+
+type Tab = "board" | "docs";
 
 const COLUMNS = [
   { key: "todo", label: "Todo", color: "#888" },
@@ -12,14 +14,20 @@ const COLUMNS = [
 export function ProjectDetailPage() {
   const { name } = useParams<{ name: string }>();
   const [project, setProject] = useState<ProjectDetail | null>(null);
+  const [docs, setDocs] = useState<ProjectDoc[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [tab, setTab] = useState<Tab>("board");
+  const [selectedDoc, setSelectedDoc] = useState<string | null>(null);
   const [showAddForm, setShowAddForm] = useState(false);
 
   useEffect(() => {
     if (!name) return;
-    api.project(name)
-      .then(setProject)
+    Promise.all([
+      api.project(name),
+      api.projectDocs(name),
+    ])
+      .then(([proj, d]) => { setProject(proj); setDocs(d); })
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
   }, [name]);
@@ -48,6 +56,8 @@ export function ProjectDetailPage() {
     else tasksByStatus.todo.push(task);
   }
 
+  const activeDoc = docs.find((d) => d.path === selectedDoc) ?? docs[0] ?? null;
+
   return (
     <div className="h-screen flex flex-col">
       {/* Header */}
@@ -62,19 +72,48 @@ export function ProjectDetailPage() {
           </div>
           <div className="flex items-center gap-3">
             <span className="text-xs text-[#666]">Max agents: {project.maxAgents}</span>
-            <button
-              onClick={() => setShowAddForm(!showAddForm)}
-              className="flex items-center gap-2 px-3 py-1.5 bg-[#c8a050] hover:bg-[#d4ad5e] text-[#0a0a0a] text-sm font-medium rounded-lg transition-colors"
-            >
-              <Plus size={16} />
-              Add Task
-            </button>
+            {tab === "board" && (
+              <button
+                onClick={() => setShowAddForm(!showAddForm)}
+                className="flex items-center gap-2 px-3 py-1.5 bg-[#c8a050] hover:bg-[#d4ad5e] text-[#0a0a0a] text-sm font-medium rounded-lg transition-colors"
+              >
+                <Plus size={16} />
+                Add Task
+              </button>
+            )}
           </div>
+        </div>
+
+        {/* Tabs */}
+        <div className="flex gap-1 mt-4">
+          <button
+            onClick={() => setTab("board")}
+            className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+              tab === "board"
+                ? "bg-[#1a1a1a] text-[#c8a050]"
+                : "text-[#666] hover:text-[#888]"
+            }`}
+          >
+            <LayoutGrid size={14} />
+            Board
+          </button>
+          <button
+            onClick={() => setTab("docs")}
+            className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+              tab === "docs"
+                ? "bg-[#1a1a1a] text-[#c8a050]"
+                : "text-[#666] hover:text-[#888]"
+            }`}
+          >
+            <FileText size={14} />
+            Docs
+            <span className="text-xs text-[#555]">{docs.length}</span>
+          </button>
         </div>
       </div>
 
       {/* Add task form */}
-      {showAddForm && (
+      {showAddForm && tab === "board" && (
         <div className="border-b border-[#1a1a1a] bg-[#0e0e0e] px-6 py-3">
           <div className="flex gap-3 max-w-lg">
             <input
@@ -94,31 +133,86 @@ export function ProjectDetailPage() {
         </div>
       )}
 
-      {/* Kanban board */}
-      <div className="flex-1 overflow-x-auto p-6">
-        <div className="flex gap-4 min-h-full">
-          {COLUMNS.map(({ key, label, color }) => (
-            <div key={key} className="flex-1 min-w-[280px]">
-              <div className="flex items-center gap-2 mb-4 px-1">
-                <div className="w-2 h-2 rounded-full" style={{ backgroundColor: color }} />
-                <h3 className="text-sm font-semibold text-[#888] uppercase tracking-wide">{label}</h3>
-                <span className="text-xs text-[#555] ml-auto">{tasksByStatus[key].length}</span>
+      {/* Tab content */}
+      {tab === "board" && (
+        <div className="flex-1 overflow-x-auto p-6">
+          <div className="flex gap-4 min-h-full">
+            {COLUMNS.map(({ key, label, color }) => (
+              <div key={key} className="flex-1 min-w-[280px]">
+                <div className="flex items-center gap-2 mb-4 px-1">
+                  <div className="w-2 h-2 rounded-full" style={{ backgroundColor: color }} />
+                  <h3 className="text-sm font-semibold text-[#888] uppercase tracking-wide">{label}</h3>
+                  <span className="text-xs text-[#555] ml-auto">{tasksByStatus[key].length}</span>
+                </div>
+                <div className="space-y-3">
+                  {tasksByStatus[key].length === 0 ? (
+                    <div className="bg-[#141414] rounded-lg border border-dashed border-[#222] p-6 text-center">
+                      <p className="text-xs text-[#444]">No tasks</p>
+                    </div>
+                  ) : (
+                    tasksByStatus[key].map((task, i) => (
+                      <TaskCard key={task.filename ?? i} task={task} />
+                    ))
+                  )}
+                </div>
               </div>
-              <div className="space-y-3">
-                {tasksByStatus[key].length === 0 ? (
-                  <div className="bg-[#141414] rounded-lg border border-dashed border-[#222] p-6 text-center">
-                    <p className="text-xs text-[#444]">No tasks</p>
-                  </div>
-                ) : (
-                  tasksByStatus[key].map((task, i) => (
-                    <TaskCard key={task.filename ?? i} task={task} />
-                  ))
-                )}
-              </div>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
-      </div>
+      )}
+
+      {tab === "docs" && (
+        <div className="flex-1 flex overflow-hidden">
+          {/* Doc sidebar */}
+          <div className="w-56 border-r border-[#1a1a1a] bg-[#0a0a0a] overflow-y-auto p-3">
+            {docs.length === 0 ? (
+              <p className="text-xs text-[#444] p-2">No docs yet</p>
+            ) : (
+              <div className="space-y-1">
+                {docs.map((doc) => (
+                  <button
+                    key={doc.path}
+                    onClick={() => setSelectedDoc(doc.path)}
+                    className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors ${
+                      (selectedDoc ?? docs[0]?.path) === doc.path
+                        ? "bg-[#1a1a1a] text-[#c8a050]"
+                        : "text-[#888] hover:bg-[#141414] hover:text-[#e5e5e5]"
+                    }`}
+                  >
+                    <div className="flex items-center gap-2">
+                      <FileText size={12} />
+                      <span className="truncate">{doc.name}</span>
+                    </div>
+                    <p className="text-xs text-[#555] mt-0.5 truncate">{doc.path}</p>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Doc content */}
+          <div className="flex-1 overflow-y-auto p-6">
+            {activeDoc ? (
+              <div>
+                <div className="flex items-center gap-2 mb-4">
+                  <FileText size={16} className="text-[#c8a050]" />
+                  <h2 className="text-sm font-semibold text-[#e5e5e5]">{activeDoc.name}</h2>
+                  <span className="text-xs text-[#555]">{activeDoc.path}</span>
+                </div>
+                <div className="bg-[#141414] rounded-lg border border-[#1a1a1a] p-6">
+                  <pre className="whitespace-pre-wrap text-sm text-[#ccc] font-mono leading-relaxed">
+                    {activeDoc.content}
+                  </pre>
+                </div>
+              </div>
+            ) : (
+              <div className="flex items-center justify-center h-full">
+                <p className="text-[#444]">Select a document</p>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

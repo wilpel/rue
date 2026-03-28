@@ -156,6 +156,14 @@ export class DaemonServer {
         return;
       }
 
+      // GET /api/projects/:name/docs
+      const docsMatch = pathname.match(/^\/api\/projects\/([^/]+)\/docs$/);
+      if (docsMatch && req.method === "GET") {
+        const docs = this.getProjectDocs(decodeURIComponent(docsMatch[1]));
+        json(docs);
+        return;
+      }
+
       // GET /api/projects/:name
       const projectMatch = pathname.match(/^\/api\/projects\/([^/]+)$/);
       if (projectMatch && req.method === "GET") {
@@ -248,6 +256,40 @@ export class DaemonServer {
     } catch {
       return null;
     }
+  }
+
+  private getProjectDocs(name: string): unknown[] {
+    const projectDir = path.join(this.projectsDir, name);
+    if (!fs.existsSync(projectDir)) return [];
+
+    const docs: Array<{ name: string; path: string; content: string }> = [];
+
+    // Read top-level md files: PROJECT.md, AGENTS.md
+    for (const file of ["PROJECT.md", "AGENTS.md"]) {
+      const filePath = path.join(projectDir, file);
+      if (fs.existsSync(filePath)) {
+        docs.push({
+          name: file,
+          path: file,
+          content: fs.readFileSync(filePath, "utf-8"),
+        });
+      }
+    }
+
+    // Read docs/ directory
+    const docsDir = path.join(projectDir, "docs");
+    if (fs.existsSync(docsDir)) {
+      const files = fs.readdirSync(docsDir).filter((f) => f.endsWith(".md"));
+      for (const file of files) {
+        docs.push({
+          name: file,
+          path: `docs/${file}`,
+          content: fs.readFileSync(path.join(docsDir, file), "utf-8"),
+        });
+      }
+    }
+
+    return docs;
   }
 
   private getProjectTasks(name: string): unknown[] {
