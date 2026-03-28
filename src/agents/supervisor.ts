@@ -124,7 +124,7 @@ export class AgentSupervisor {
   }
 
   shutdown(): void {
-    for (const [id, entry] of this.agents) {
+    for (const [, entry] of this.agents) {
       entry.process.kill();
       entry.handle.state = "killed";
     }

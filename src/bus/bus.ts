@@ -1,4 +1,4 @@
-import type { ChannelName, ChannelPayload, BusChannels } from "./channels.js";
+import type { ChannelName, ChannelPayload } from "./channels.js";
 
 type Handler<C extends ChannelName> = (payload: ChannelPayload<C>) => void;
 type WildcardHandler = (channel: string, payload: unknown) => void;

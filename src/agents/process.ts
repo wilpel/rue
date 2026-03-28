@@ -7,7 +7,7 @@ export class ClaudeProcess {
   private process: ChildProcess | null = null;
   private outputCallbacks: OutputCallback[] = [];
   private _isRunning = false;
-  private _output = "";
+  private _output: string | undefined;
 
   constructor(private readonly config: AgentConfig) {}
 
@@ -17,6 +17,10 @@ export class ClaudeProcess {
 
   get isRunning(): boolean {
     return this._isRunning;
+  }
+
+  get output(): string | undefined {
+    return this._output;
   }
 
   onOutput(callback: OutputCallback): void {
