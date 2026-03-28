@@ -13,6 +13,11 @@ import { MessageStore } from "../messages/store.js";
 import { createHandler } from "./handler.js";
 import { parseClientFrame, serializeDaemonFrame } from "./protocol.js";
 import * as path from "node:path";
+import { fileURLToPath } from "node:url";
+
+// Resolve the rue-bot project root (where SYSTEM.md and skills/ live)
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const PROJECT_ROOT = path.resolve(__dirname, "..", "..");
 
 export interface DaemonServerConfig {
   port: number;
@@ -48,7 +53,7 @@ export class DaemonServer {
       working: this.working,
       identity: this.identity,
       userModel: this.userModel,
-      projectDir: process.cwd(),
+      projectDir: PROJECT_ROOT,
     });
     this.planner = new Planner(this.bus, this.supervisor, {
       workdir: process.cwd(),
