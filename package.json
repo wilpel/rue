@@ -19,6 +19,7 @@
   },
   "license": "MIT",
   "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "^0.2.86",
     "better-sqlite3": "^12.8.0",
     "commander": "^14.0.3",
     "nanoid": "^5.1.7",

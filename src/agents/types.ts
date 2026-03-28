@@ -36,4 +36,12 @@ export interface SpawnResult {
   exitCode: number | null;
   cost: number;
   durationMs: number;
+  sessionId?: string;
+  numTurns?: number;
+  usage?: {
+    inputTokens: number;
+    outputTokens: number;
+    cacheReadInputTokens: number;
+    cacheCreationInputTokens: number;
+  };
 }
