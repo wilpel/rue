@@ -8,6 +8,7 @@ import type { WebSocket } from "ws";
 import { serializeDaemonFrame } from "./protocol.js";
 
 export interface HandlerDeps {
+  projectRoot: string;
   bus: EventBus;
   supervisor: AgentSupervisor;
   planner: Planner;
@@ -52,7 +53,7 @@ async function handleCmd(
       case "ask": {
         const text = frame.args.text as string;
         const systemPrompt = deps.assembler.assemble(text);
-        const workdir = (frame.args.workdir as string) ?? process.cwd();
+        const workdir = (frame.args.workdir as string) ?? deps.projectRoot;
         const existingSessionId = sessionMap.get(ws) ?? lastSessionId;
 
         // Persist user message

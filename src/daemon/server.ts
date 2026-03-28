@@ -64,6 +64,7 @@ export class DaemonServer {
   async start(): Promise<void> {
     this.wss = new WebSocketServer({ port: this.config.port, host: "127.0.0.1" });
     const handler = createHandler({
+      projectRoot: PROJECT_ROOT,
       bus: this.bus,
       supervisor: this.supervisor,
       planner: this.planner,
