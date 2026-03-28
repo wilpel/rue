@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { RueClient } from "./client";
 
 const ClientContext = createContext<RueClient | null>(null);
@@ -10,16 +10,32 @@ export function useClient(): RueClient {
 }
 
 export function ClientProvider({ children }: { children: ReactNode }) {
-  const [client] = useState(() => new RueClient());
+  const clientRef = useRef<RueClient | null>(null);
   const [ready, setReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Create client once, persist across StrictMode re-mounts
+  if (!clientRef.current) {
+    clientRef.current = new RueClient();
+  }
+  const client = clientRef.current;
+
   useEffect(() => {
+    let cancelled = false;
+
     client.connect().then(() => {
+      if (cancelled) return;
       client.subscribe(["agent:*", "task:*", "message:*"]);
       setReady(true);
-    }).catch(() => setError("Cannot connect to Rue daemon. Is it running?"));
-    return () => client.disconnect();
+    }).catch(() => {
+      if (cancelled) return;
+      setError("Cannot connect to Rue daemon. Is it running?");
+    });
+
+    return () => {
+      cancelled = true;
+      // Don't disconnect on StrictMode re-mount — only on real unmount
+    };
   }, [client]);
 
   if (error) return (

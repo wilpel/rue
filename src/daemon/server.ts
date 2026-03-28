@@ -1,4 +1,5 @@
 import { WebSocketServer, type WebSocket } from "ws";
+import { createServer, type Server as HttpServer } from "node:http";
 import { EventBus } from "../bus/bus.js";
 import { LaneQueue } from "../agents/lanes.js";
 import { AgentSupervisor } from "../agents/supervisor.js";
@@ -30,6 +31,7 @@ export class DaemonServer {
   private lanes: LaneQueue;
   private supervisor: AgentSupervisor;
   private planner: Planner;
+  private httpServer: HttpServer | null = null;
   private persistence: EventPersistence;
   private messages: MessageStore;
   private semantic: SemanticMemory;
@@ -62,7 +64,15 @@ export class DaemonServer {
   }
 
   async start(): Promise<void> {
-    this.wss = new WebSocketServer({ port: this.config.port, host: "127.0.0.1" });
+    // Use an HTTP server so browsers can upgrade to WebSocket properly
+    this.httpServer = createServer((_req, res) => {
+      res.writeHead(200, {
+        "Content-Type": "text/plain",
+        "Access-Control-Allow-Origin": "*",
+      });
+      res.end("Rue daemon running");
+    });
+    this.wss = new WebSocketServer({ server: this.httpServer });
     const handler = createHandler({
       projectRoot: PROJECT_ROOT,
       bus: this.bus,
@@ -86,7 +96,7 @@ export class DaemonServer {
 
     this.bus.emit("system:started", {});
     await new Promise<void>((resolve) => {
-      this.wss!.on("listening", resolve);
+      this.httpServer!.listen(this.config.port, resolve);
     });
   }
 
@@ -102,6 +112,10 @@ export class DaemonServer {
       }
       await new Promise<void>((resolve) => this.wss!.close(() => resolve()));
       this.wss = null;
+    }
+    if (this.httpServer) {
+      await new Promise<void>((resolve) => this.httpServer!.close(() => resolve()));
+      this.httpServer = null;
     }
   }
 }

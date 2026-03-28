@@ -26,17 +26,29 @@ export class RueClient {
 
   get connected(): boolean { return this._connected; }
 
-  connect(url = "ws://localhost:18800"): Promise<void> {
-    return new Promise((resolve, reject) => {
+  private connectPromise: Promise<void> | null = null;
+
+  connect(url = "ws://127.0.0.1:18800"): Promise<void> {
+    // Already connected
+    if (this._connected && this.ws?.readyState === WebSocket.OPEN) {
+      return Promise.resolve();
+    }
+    // Connection in progress — return same promise
+    if (this.connectPromise) {
+      return this.connectPromise;
+    }
+
+    this.connectPromise = new Promise<void>((resolve, reject) => {
       this.ws = new WebSocket(url);
-      this.ws.onopen = () => { this._connected = true; resolve(); };
-      this.ws.onerror = () => reject(new Error("Connection failed"));
-      this.ws.onclose = () => { this._connected = false; };
+      this.ws.onopen = () => { this._connected = true; this.connectPromise = null; resolve(); };
+      this.ws.onerror = () => { this.connectPromise = null; reject(new Error("Connection failed")); };
+      this.ws.onclose = () => { this._connected = false; this.connectPromise = null; };
       this.ws.onmessage = (e) => {
         const frame = JSON.parse(e.data) as DaemonFrame;
         this.handleFrame(frame);
       };
     });
+    return this.connectPromise;
   }
 
   disconnect(): void { this.ws?.close(); this._connected = false; }
