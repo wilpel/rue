@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { Box, Text, useApp, useInput } from "ink";
 import { MessageList } from "./MessageList.js";
 import { InputBar } from "./InputBar.js";
-import { StatusBar } from "./StatusBar.js";
+import { AgentPanel } from "./AgentPanel.js";
 import { DaemonClient } from "../client.js";
 
 export interface AgentActivity {
@@ -15,11 +15,10 @@ export interface AgentActivity {
 
 export interface ChatMessage {
   id: string;
-  role: "user" | "assistant" | "system" | "agent-event";
+  role: "user" | "assistant" | "system";
   content: string;
   timestamp: number;
   isStreaming?: boolean;
-  agentActivity?: AgentActivity;
 }
 
 interface AppProps {
@@ -42,122 +41,59 @@ export function App({ client }: AppProps) {
   // Load message history on startup
   useEffect(() => {
     client.history(15).then((result) => {
-      const restored: ChatMessage[] = result.messages.map((m) => {
-        if (m.role === "agent-event" && m.metadata) {
-          return {
-            id: m.id,
-            role: "agent-event" as const,
-            content: m.content,
-            timestamp: m.timestamp,
-            agentActivity: {
-              id: (m.metadata.agentId as string) ?? m.id,
-              task: m.content,
-              state: "completed" as const,
-              startedAt: m.timestamp,
-              lane: "sub",
-            },
-          };
-        }
-        return {
+      const restored: ChatMessage[] = result.messages
+        .filter((m) => m.role !== "agent-event")
+        .map((m) => ({
           id: m.id,
           role: m.role as ChatMessage["role"],
           content: m.content,
           timestamp: m.timestamp,
-        };
-      });
+        }));
       if (restored.length > 0) {
         setMessages(restored);
       }
-    }).catch(() => {
-      // History not available — start fresh
-    });
+    }).catch(() => {});
   }, [client]);
 
-  // Subscribe to agent events from the daemon
+  // Subscribe to agent events
   useEffect(() => {
-    client.subscribe(["agent:*", "task:*", "message:*"]);
+    client.subscribe(["agent:*"]);
 
     const unsub = client.onEvent((channel, payload) => {
       const data = payload as Record<string, unknown>;
 
       switch (channel) {
         case "agent:spawned": {
-          const activity: AgentActivity = {
+          setAgents((prev) => new Map(prev).set(data.id as string, {
             id: data.id as string,
             task: data.task as string,
             state: "spawned",
             startedAt: Date.now(),
             lane: data.lane as string,
-          };
-          setAgents((prev) => new Map(prev).set(activity.id, activity));
-          setMessages((prev) => [
-            ...prev,
-            {
-              id: `event-${Date.now()}-spawned`,
-              role: "agent-event",
-              content: "",
-              timestamp: Date.now(),
-              agentActivity: activity,
-            },
-          ]);
+          }));
           break;
         }
-        case "agent:completed": {
-          const id = data.id as string;
-          setAgents((prev) => {
-            const next = new Map(prev);
-            const existing = next.get(id);
-            if (existing) {
-              next.set(id, { ...existing, state: "completed" });
-            }
-            return next;
-          });
-          // Update the event message
-          setMessages((prev) =>
-            prev.map((m) =>
-              m.agentActivity?.id === id
-                ? { ...m, agentActivity: { ...m.agentActivity, state: "completed" as const } }
-                : m,
-            ),
-          );
-          break;
-        }
-        case "agent:failed": {
-          const id = data.id as string;
-          setAgents((prev) => {
-            const next = new Map(prev);
-            const existing = next.get(id);
-            if (existing) {
-              next.set(id, { ...existing, state: "failed" });
-            }
-            return next;
-          });
-          setMessages((prev) =>
-            prev.map((m) =>
-              m.agentActivity?.id === id
-                ? { ...m, agentActivity: { ...m.agentActivity, state: "failed" as const } }
-                : m,
-            ),
-          );
-          break;
-        }
+        case "agent:completed":
+        case "agent:failed":
         case "agent:killed": {
           const id = data.id as string;
+          const state = channel.split(":")[1] as AgentActivity["state"];
           setAgents((prev) => {
             const next = new Map(prev);
             const existing = next.get(id);
             if (existing) {
-              next.set(id, { ...existing, state: "killed" });
+              next.set(id, { ...existing, state });
+              // Remove completed/failed/killed agents after a short delay
+              setTimeout(() => {
+                setAgents((p) => {
+                  const n = new Map(p);
+                  n.delete(id);
+                  return n;
+                });
+              }, 5000);
             }
             return next;
           });
-          setMessages((prev) =>
-            prev.map((m) =>
-              m.agentActivity?.id === id
-                ? { ...m, agentActivity: { ...m.agentActivity, state: "killed" as const } }
-                : m,
-            ),
-          );
           break;
         }
       }
@@ -169,6 +105,12 @@ export function App({ client }: AppProps) {
   const handleSubmit = useCallback(
     async (text: string) => {
       if (!text.trim()) return;
+
+      // Handle slash commands
+      if (text.startsWith("/")) {
+        await handleSlashCommand(text, setMessages, client, agents);
+        return;
+      }
 
       const userMsg: ChatMessage = {
         id: `user-${Date.now()}`,
@@ -192,8 +134,6 @@ export function App({ client }: AppProps) {
       try {
         const result = await client.ask(text, {
           onStream: (chunk) => {
-            // Find assistant message by ID, not position — agent events
-            // may be inserted between the assistant message and new chunks
             setMessages((prev) =>
               prev.map((m) =>
                 m.id === assistantId
@@ -204,7 +144,6 @@ export function App({ client }: AppProps) {
           },
         });
 
-        // Finalize
         setMessages((prev) =>
           prev.map((m) =>
             m.id === assistantId
@@ -224,12 +163,10 @@ export function App({ client }: AppProps) {
         setIsLoading(false);
       }
     },
-    [client, isLoading],
+    [client, isLoading, agents],
   );
 
-  const activeAgents = Array.from(agents.values()).filter(
-    (a) => a.state === "spawned" || a.state === "running",
-  );
+  const activeAgents = Array.from(agents.values());
 
   return (
     <Box flexDirection="column" width="100%" height="100%">
@@ -237,10 +174,75 @@ export function App({ client }: AppProps) {
       <Box flexDirection="column" flexGrow={1}>
         <MessageList messages={messages} />
       </Box>
+      {activeAgents.length > 0 && <AgentPanel agents={activeAgents} />}
       <InputBar onSubmit={handleSubmit} isLoading={isLoading} />
-      <StatusBar agentCount={activeAgents.length} isLoading={isLoading} />
     </Box>
   );
+}
+
+async function handleSlashCommand(
+  text: string,
+  setMessages: React.Dispatch<React.SetStateAction<ChatMessage[]>>,
+  _client: DaemonClient,
+  agents: Map<string, AgentActivity>,
+) {
+  const cmd = text.slice(1).trim().toLowerCase();
+
+  switch (cmd) {
+    case "agents": {
+      const agentList = Array.from(agents.values());
+      if (agentList.length === 0) {
+        setMessages((prev) => [...prev, {
+          id: `sys-${Date.now()}`,
+          role: "system",
+          content: "No agents currently running.",
+          timestamp: Date.now(),
+        }]);
+      } else {
+        const lines = agentList.map((a) => {
+          const elapsed = formatElapsed(Date.now() - a.startedAt);
+          const icon = a.state === "spawned" || a.state === "running" ? ">" : a.state === "completed" ? "+" : "x";
+          return `  ${icon} ${a.id.slice(0, 20)} | ${a.state} | ${a.lane} | ${elapsed}\n    ${a.task}`;
+        });
+        setMessages((prev) => [...prev, {
+          id: `sys-${Date.now()}`,
+          role: "system",
+          content: `Active agents:\n${lines.join("\n")}`,
+          timestamp: Date.now(),
+        }]);
+      }
+      break;
+    }
+    case "clear": {
+      setMessages([]);
+      break;
+    }
+    case "help": {
+      setMessages((prev) => [...prev, {
+        id: `sys-${Date.now()}`,
+        role: "system",
+        content: "Commands: /agents — list agents | /clear — clear chat | /help — this message",
+        timestamp: Date.now(),
+      }]);
+      break;
+    }
+    default: {
+      setMessages((prev) => [...prev, {
+        id: `sys-${Date.now()}`,
+        role: "system",
+        content: `Unknown command: /${cmd}. Type /help for available commands.`,
+        timestamp: Date.now(),
+      }]);
+    }
+  }
+}
+
+function formatElapsed(ms: number): string {
+  const seconds = Math.floor(ms / 1000);
+  if (seconds < 60) return `${seconds}s`;
+  const minutes = Math.floor(seconds / 60);
+  const remaining = seconds % 60;
+  return `${minutes}m${remaining}s`;
 }
 
 function Header() {
@@ -248,7 +250,7 @@ function Header() {
     <Box borderStyle="single" borderColor="cyan" paddingX={1} justifyContent="center">
       <Text bold color="cyan">rue</Text>
       <Text color="gray"> v0.1.0 </Text>
-      <Text dimColor>| ctrl+c to quit</Text>
+      <Text dimColor>| /help for commands</Text>
     </Box>
   );
 }
