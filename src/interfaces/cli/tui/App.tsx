@@ -134,7 +134,7 @@ export function App({ client }: AppProps) {
 
   const handleSubmit = useCallback(
     async (text: string) => {
-      if (!text.trim() || isLoading) return;
+      if (!text.trim()) return;
 
       const userMsg: ChatMessage = {
         id: `user-${Date.now()}`,

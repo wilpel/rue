@@ -16,17 +16,9 @@ export function InputBar({ onSubmit, isLoading }: InputBarProps) {
     setValue("");
   };
 
-  if (isLoading) {
-    return (
-      <Box paddingX={1}>
-        <Text dimColor>waiting for response...</Text>
-      </Box>
-    );
-  }
-
   return (
-    <Box borderStyle="single" borderColor="cyan" paddingX={1}>
-      <Text color="cyan" bold>{">"} </Text>
+    <Box borderStyle="single" borderColor={isLoading ? "yellow" : "cyan"} paddingX={1}>
+      <Text color={isLoading ? "yellow" : "cyan"} bold>{">"} </Text>
       <TextInput
         value={value}
         onChange={setValue}
