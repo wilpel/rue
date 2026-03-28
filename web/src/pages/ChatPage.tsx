@@ -56,31 +56,31 @@ export function ChatPage() {
 
   return (
     <div className="h-screen flex flex-col">
-      <div className="border-b border-amber-100 bg-white/60 px-6 py-4">
-        <h1 className="text-lg font-semibold text-stone-700">Chat</h1>
+      <div className="border-b border-[#1a1a1a] bg-[#0e0e0e] px-6 py-4">
+        <h1 className="text-lg font-semibold text-[#e5e5e5]">Chat</h1>
       </div>
 
       <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
         {messages.length === 0 && (
           <div className="text-center py-20">
-            <p className="text-stone-400">Start a conversation with Rue</p>
+            <p className="text-[#555]">Start a conversation with Rue</p>
           </div>
         )}
         {messages.map((msg) => (
           <div key={msg.id} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
             <div className={`max-w-[70%] rounded-2xl px-4 py-3 ${
               msg.role === "user"
-                ? "bg-amber-500 text-white"
+                ? "bg-[#c8a050] text-[#0a0a0a]"
                 : msg.role === "system"
-                  ? "bg-stone-100 text-stone-500 text-sm italic"
-                  : "bg-white border border-amber-100 text-stone-700 shadow-sm"
+                  ? "bg-[#1a1a1a] text-[#666] text-sm italic"
+                  : "bg-[#1a1a1a] border border-[#222] text-[#e5e5e5]"
             }`}>
               {msg.role === "assistant" && (
-                <p className="text-xs font-medium text-amber-600 mb-1">rue</p>
+                <p className="text-xs font-medium text-[#c8a050] mb-1">rue</p>
               )}
               <p className="whitespace-pre-wrap text-sm leading-relaxed">{msg.content || (msg.isStreaming ? "..." : "")}</p>
               {msg.isStreaming && msg.content && (
-                <span className="inline-block w-2 h-4 bg-amber-400 rounded-sm ml-0.5 animate-pulse" />
+                <span className="inline-block w-2 h-4 bg-[#c8a050] rounded-sm ml-0.5 animate-pulse" />
               )}
             </div>
           </div>
@@ -88,18 +88,18 @@ export function ChatPage() {
         <div ref={endRef} />
       </div>
 
-      <form onSubmit={handleSubmit} className="border-t border-amber-100 bg-white/80 p-4">
+      <form onSubmit={handleSubmit} className="border-t border-[#1a1a1a] bg-[#0e0e0e] p-4">
         <div className="flex gap-3 max-w-3xl mx-auto">
           <input
             value={input}
             onChange={(e) => setInput(e.target.value)}
             placeholder="Type a message..."
-            className="flex-1 px-4 py-3 bg-amber-50/50 rounded-xl border border-amber-100 text-stone-700 placeholder-stone-300 focus:outline-none focus:ring-2 focus:ring-amber-200"
+            className="flex-1 px-4 py-3 bg-[#141414] rounded-xl border border-[#1a1a1a] text-[#e5e5e5] placeholder-[#555] focus:outline-none focus:ring-2 focus:ring-[#c8a050]/30"
           />
           <button
             type="submit"
             disabled={sending || !input.trim()}
-            className="px-5 py-3 bg-amber-500 hover:bg-amber-600 disabled:bg-stone-200 text-white rounded-xl font-medium transition-colors"
+            className="px-5 py-3 bg-[#c8a050] hover:bg-[#d4ad5e] disabled:bg-[#333] text-[#0a0a0a] rounded-xl font-medium transition-colors"
           >
             Send
           </button>

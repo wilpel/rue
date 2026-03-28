@@ -23,12 +23,12 @@ export function HomePage() {
     <div className="max-w-4xl mx-auto p-8">
       <div className="mb-10">
         <div className="flex items-center gap-4 mb-1">
-          <div className="w-12 h-12 rounded-full bg-amber-200 flex items-center justify-center">
-            <Sparkles size={22} className="text-amber-700" />
+          <div className="w-12 h-12 rounded-full bg-[#1a1a1a] border border-[#2a2a2a] flex items-center justify-center">
+            <Sparkles size={22} className="text-[#c8a050]" />
           </div>
           <div>
-            <h1 className="text-3xl font-bold text-stone-800">{greeting}</h1>
-            <p className="text-stone-400 text-sm">{today}</p>
+            <h1 className="text-3xl font-bold text-[#e5e5e5]">{greeting}</h1>
+            <p className="text-[#555] text-sm">{today}</p>
           </div>
         </div>
       </div>
@@ -36,23 +36,23 @@ export function HomePage() {
       <div className="grid grid-cols-2 gap-6 mb-8">
         <div>
           <div className="flex items-center gap-2 mb-3">
-            <div className="w-1 h-5 bg-amber-400 rounded-full" />
-            <h2 className="text-sm font-semibold text-stone-600 uppercase tracking-wide">Recent</h2>
+            <div className="w-1 h-5 bg-[#c8a050] rounded-full" />
+            <h2 className="text-sm font-semibold text-[#888] uppercase tracking-wide">Recent</h2>
           </div>
-          <div className="bg-white rounded-xl border border-amber-100 p-5 shadow-sm">
+          <div className="bg-[#141414] rounded-xl border border-[#1a1a1a] p-5">
             {recentMessages.length === 0 ? (
-              <p className="text-stone-400 text-sm text-center py-6">No conversations yet</p>
+              <p className="text-[#555] text-sm text-center py-6">No conversations yet</p>
             ) : (
               <div className="space-y-3">
                 {recentMessages.filter(m => m.role === "user").slice(-3).map((m, i) => (
                   <div key={i} className="flex items-start gap-3">
-                    <Clock size={14} className="text-stone-300 mt-0.5 shrink-0" />
-                    <p className="text-sm text-stone-600 truncate">{m.content}</p>
+                    <Clock size={14} className="text-[#444] mt-0.5 shrink-0" />
+                    <p className="text-sm text-[#aaa] truncate">{m.content}</p>
                   </div>
                 ))}
               </div>
             )}
-            <Link to="/chat" className="block text-amber-600 text-xs font-medium mt-4 hover:text-amber-700">
+            <Link to="/chat" className="block text-[#c8a050] text-xs font-medium mt-4 hover:text-[#d4ad5e]">
               Open chat →
             </Link>
           </div>
@@ -60,8 +60,8 @@ export function HomePage() {
 
         <div>
           <div className="flex items-center gap-2 mb-3">
-            <div className="w-1 h-5 bg-amber-400 rounded-full" />
-            <h2 className="text-sm font-semibold text-stone-600 uppercase tracking-wide">Quick Actions</h2>
+            <div className="w-1 h-5 bg-[#c8a050] rounded-full" />
+            <h2 className="text-sm font-semibold text-[#888] uppercase tracking-wide">Quick Actions</h2>
           </div>
           <div className="grid grid-cols-3 gap-3">
             {[
@@ -73,17 +73,16 @@ export function HomePage() {
               <Link
                 key={label}
                 to={to}
-                className="bg-white rounded-xl border border-amber-100 p-4 flex flex-col items-center gap-2 shadow-sm hover:shadow-md hover:border-amber-200 transition-all"
+                className="bg-[#141414] rounded-xl border border-[#1a1a1a] p-4 flex flex-col items-center gap-2 hover:border-[#c8a050]/30 transition-all"
               >
-                <Icon size={22} className="text-amber-600" />
-                <span className="text-xs font-medium text-stone-600">{label}</span>
+                <Icon size={22} className="text-[#c8a050]" />
+                <span className="text-xs font-medium text-[#888]">{label}</span>
               </Link>
             ))}
           </div>
         </div>
       </div>
 
-      {/* Chat input at bottom */}
       <ChatInput />
     </div>
   );
@@ -115,14 +114,14 @@ function ChatInput() {
           value={value}
           onChange={(e) => setValue(e.target.value)}
           placeholder="Ask Rue anything..."
-          className="w-full px-5 py-4 bg-white rounded-2xl border border-amber-100 shadow-sm text-stone-700 placeholder-stone-300 focus:outline-none focus:ring-2 focus:ring-amber-200 focus:border-amber-200"
+          className="w-full px-5 py-4 bg-[#141414] rounded-2xl border border-[#1a1a1a] text-[#e5e5e5] placeholder-[#555] focus:outline-none focus:ring-2 focus:ring-[#c8a050]/30 focus:border-[#c8a050]/50"
         />
         <button
           type="submit"
           disabled={sending || !value.trim()}
-          className="absolute right-3 top-1/2 -translate-y-1/2 w-9 h-9 bg-amber-500 hover:bg-amber-600 disabled:bg-stone-200 rounded-xl flex items-center justify-center transition-colors"
+          className="absolute right-3 top-1/2 -translate-y-1/2 w-9 h-9 bg-[#c8a050] hover:bg-[#d4ad5e] disabled:bg-[#333] rounded-xl flex items-center justify-center transition-colors"
         >
-          <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 12h14M12 5l7 7-7 7" /></svg>
+          <svg className="w-4 h-4 text-[#0a0a0a]" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 12h14M12 5l7 7-7 7" /></svg>
         </button>
       </div>
     </form>

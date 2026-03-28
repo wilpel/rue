@@ -10,21 +10,22 @@ const navItems = [
 
 export function Layout() {
   return (
-    <div className="min-h-screen bg-amber-50/50 text-stone-800 flex">
-      <nav className="w-56 bg-white/80 border-r border-amber-100 p-4 flex flex-col gap-1">
+    <div className="min-h-screen bg-[#0a0a0a] text-[#e5e5e5] flex">
+      <nav className="w-56 bg-[#0e0e0e] border-r border-[#1a1a1a] p-4 flex flex-col gap-1">
         <div className="px-3 py-4 mb-4">
-          <h1 className="text-2xl font-bold text-amber-800">rue</h1>
-          <p className="text-xs text-stone-400 mt-1">your ai companion</p>
+          <h1 className="text-2xl font-bold text-[#c8a050]">rue</h1>
+          <p className="text-xs text-[#555] mt-1">your ai companion</p>
         </div>
         {navItems.map(({ to, icon: Icon, label }) => (
           <NavLink
             key={to}
             to={to}
+            end={to === "/"}
             className={({ isActive }) =>
               `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
                 isActive
-                  ? "bg-amber-100 text-amber-900"
-                  : "text-stone-500 hover:bg-amber-50 hover:text-stone-700"
+                  ? "bg-[#1a1a1a] text-[#c8a050]"
+                  : "text-[#888] hover:bg-[#141414] hover:text-[#e5e5e5]"
               }`
             }
           >
@@ -37,7 +38,7 @@ export function Layout() {
             to="/settings"
             className={({ isActive }) =>
               `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-                isActive ? "bg-amber-100 text-amber-900" : "text-stone-500 hover:bg-amber-50 hover:text-stone-700"
+                isActive ? "bg-[#1a1a1a] text-[#c8a050]" : "text-[#888] hover:bg-[#141414] hover:text-[#e5e5e5]"
               }`
             }
           >
