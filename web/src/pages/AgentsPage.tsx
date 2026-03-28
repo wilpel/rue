@@ -14,12 +14,12 @@ export function AgentsPage() {
 
   return (
     <div className="h-screen flex flex-col">
-      <div className="border-b border-border-subtle bg-surface-1/50 px-6 py-3.5">
-        <h1 className="text-sm font-semibold text-text-secondary tracking-wide">Agents</h1>
+      <div className="border-b border-border-subtle px-6 py-3">
+        <h1 className="text-sm font-semibold text-text-secondary">Agents</h1>
       </div>
       <div className="flex-1 overflow-y-auto p-6">
         {agents.length === 0 ? (
-          <div className="text-center py-24 animate-fade-in">
+          <div className="text-center py-24">
             <Bot size={32} className="mx-auto text-text-muted/20 mb-4" strokeWidth={1} />
             <p className="text-text-muted text-sm mb-1">No active agents</p>
             <p className="text-text-muted/60 text-xs">Agents appear here when Rue spawns them</p>
@@ -27,12 +27,12 @@ export function AgentsPage() {
         ) : (
           <div className="max-w-2xl space-y-3">
             {agents.map(agent => (
-              <div key={agent.id} className="bg-surface-1 rounded-xl border border-border-subtle p-4 animate-slide-in">
+              <div key={agent.id} className="bg-surface rounded-xl border border-border p-4">
                 <div className="flex items-center gap-3 mb-2">
-                  <div className="w-1.5 h-1.5 rounded-full bg-gold animate-pulse-gold" />
+                  <div className="w-1.5 h-1.5 rounded-full bg-accent animate-pulse-accent" />
                   <span className="font-mono text-[10px] text-text-muted">{agent.id}</span>
-                  <span className="text-[10px] px-2 py-0.5 bg-gold/10 text-gold rounded-full font-medium">{agent.lane}</span>
-                  <span className="text-[10px] px-2 py-0.5 bg-surface-3 text-text-muted rounded-full">{agent.state}</span>
+                  <span className="text-[10px] px-2 py-0.5 bg-accent-muted text-accent rounded-full font-medium">{agent.lane}</span>
+                  <span className="text-[10px] px-2 py-0.5 bg-surface-elevated text-text-muted rounded-full">{agent.state}</span>
                 </div>
                 <p className="text-xs text-text-secondary ml-[18px]">{agent.task}</p>
               </div>

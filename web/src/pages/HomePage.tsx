@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { MessageCircle, FolderKanban, Bot, CheckSquare, Sparkles, ArrowRight } from "lucide-react";
+import { MessageCircle, FolderKanban, Bot, CheckSquare, ArrowRight } from "lucide-react";
 import { api } from "../lib/api";
 
 export function HomePage() {
@@ -20,44 +20,37 @@ export function HomePage() {
   return (
     <div className="max-w-4xl mx-auto px-8 py-12">
       {/* Greeting */}
-      <div className="mb-12 animate-fade-in">
-        <div className="flex items-center gap-4">
-          <div className="w-10 h-10 rounded-xl bg-gold/10 flex items-center justify-center">
-            <Sparkles size={18} className="text-gold" />
-          </div>
-          <div>
-            <h1 className="text-2xl font-semibold text-text">{greeting}</h1>
-            <p className="text-xs text-text-muted mt-0.5">{today}</p>
-          </div>
-        </div>
+      <div className="mb-12">
+        <h1 className="text-2xl font-semibold text-text-primary">{greeting}</h1>
+        <p className="text-sm text-text-muted mt-1">{today}</p>
       </div>
 
       {/* Two columns */}
       <div className="grid grid-cols-2 gap-8 mb-12">
         {/* Recent */}
-        <div className="animate-fade-in stagger-1">
+        <div>
           <SectionLabel>Recent</SectionLabel>
-          <div className="bg-surface-1 rounded-xl border border-border-subtle p-5">
+          <div className="bg-surface rounded-xl border border-border p-5">
             {recent.length === 0 ? (
               <p className="text-text-muted text-sm py-6 text-center">No conversations yet</p>
             ) : (
               <div className="space-y-3">
                 {recent.map((m, i) => (
                   <div key={i} className="flex items-start gap-3 group">
-                    <div className="w-1 h-1 rounded-full bg-gold/40 mt-2 shrink-0" />
-                    <p className="text-sm text-text-secondary group-hover:text-text transition-colors truncate">{m.content}</p>
+                    <div className="w-1 h-1 rounded-full bg-accent/40 mt-2 shrink-0" />
+                    <p className="text-sm text-text-secondary group-hover:text-text-primary transition-colors duration-150 truncate">{m.content}</p>
                   </div>
                 ))}
               </div>
             )}
-            <Link to="/chat" className="flex items-center gap-1.5 text-gold/70 hover:text-gold text-xs font-medium mt-5 transition-colors">
-              Open chat <ArrowRight size={12} />
+            <Link to="/chat" className="flex items-center gap-1.5 text-accent hover:text-accent-hover text-xs font-medium mt-5 transition-colors duration-150">
+              View all <ArrowRight size={12} />
             </Link>
           </div>
         </div>
 
         {/* Quick actions */}
-        <div className="animate-fade-in stagger-2">
+        <div>
           <SectionLabel>Quick actions</SectionLabel>
           <div className="grid grid-cols-2 gap-3">
             {[
@@ -65,11 +58,11 @@ export function HomePage() {
               { to: "/projects", icon: FolderKanban, label: "Projects" },
               { to: "/agents", icon: Bot, label: "Agents" },
               { to: "/projects", icon: CheckSquare, label: "Tasks" },
-            ].map(({ to, icon: Icon, label }, i) => (
+            ].map(({ to, icon: Icon, label }) => (
               <Link
                 key={label}
                 to={to}
-                className={`bg-surface-1 rounded-xl border border-border-subtle p-5 flex flex-col items-center gap-3 hover:border-gold/20 hover:bg-surface-2 transition-all duration-300 animate-fade-in stagger-${i + 2}`}
+                className="bg-surface rounded-xl border border-border p-5 flex flex-col items-center gap-3 hover:border-accent/30 transition-colors duration-150"
               >
                 <Icon size={20} className="text-text-muted" strokeWidth={1.5} />
                 <span className="text-xs font-medium text-text-secondary">{label}</span>
@@ -80,19 +73,17 @@ export function HomePage() {
       </div>
 
       {/* Chat input */}
-      <div className="animate-fade-in stagger-4">
-        <div className="relative group">
-          <div className="absolute inset-0 rounded-2xl bg-gold/5 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
-          <input
-            readOnly
-            placeholder="Ask Rue anything..."
-            onClick={() => window.location.href = '/chat'}
-            className="w-full px-6 py-4 bg-surface-1 rounded-2xl border border-border-subtle text-text placeholder-text-muted text-sm cursor-pointer hover:border-gold/20 transition-all duration-300 focus:outline-none relative"
-          />
-          <div className="absolute right-4 top-1/2 -translate-y-1/2 w-8 h-8 rounded-lg bg-gold/10 flex items-center justify-center relative">
-            <ArrowRight size={14} className="text-gold" />
+      <div>
+        <Link to="/chat" className="block">
+          <div className="relative group">
+            <div className="w-full px-6 py-4 bg-surface rounded-xl border border-border text-text-muted text-sm cursor-pointer group-hover:border-accent/20 transition-colors duration-150">
+              Message Rue...
+            </div>
+            <div className="absolute right-4 top-1/2 -translate-y-1/2 w-8 h-8 rounded-lg bg-accent flex items-center justify-center">
+              <ArrowRight size={14} className="text-bg" />
+            </div>
           </div>
-        </div>
+        </Link>
       </div>
     </div>
   );
@@ -100,9 +91,6 @@ export function HomePage() {
 
 function SectionLabel({ children }: { children: string }) {
   return (
-    <div className="flex items-center gap-2 mb-3">
-      <div className="w-0.5 h-4 bg-gold rounded-full" />
-      <h2 className="text-[11px] font-semibold text-text-muted uppercase tracking-[0.15em]">{children}</h2>
-    </div>
+    <h2 className="text-[11px] font-medium text-text-muted uppercase tracking-widest mb-3">{children}</h2>
   );
 }

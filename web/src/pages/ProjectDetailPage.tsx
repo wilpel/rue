@@ -7,7 +7,7 @@ type Tab = "board" | "docs";
 
 const COLUMNS = [
   { key: "todo", label: "Todo", dotClass: "bg-text-muted/40" },
-  { key: "in-progress", label: "In Progress", dotClass: "bg-gold" },
+  { key: "in-progress", label: "In Progress", dotClass: "bg-accent" },
   { key: "done", label: "Done", dotClass: "bg-success" },
 ] as const;
 
@@ -28,11 +28,11 @@ export function ProjectDetailPage() {
       .finally(() => setLoading(false));
   }, [name]);
 
-  if (loading) return <div className="h-screen flex items-center justify-center"><div className="w-2 h-2 rounded-full bg-gold/40 animate-pulse-gold" /></div>;
+  if (loading) return <div className="h-screen flex items-center justify-center"><div className="w-2 h-2 rounded-full bg-accent animate-pulse-accent" /></div>;
   if (error || !project) return (
     <div className="h-screen flex flex-col items-center justify-center gap-3">
       <p className="text-error text-sm">{error ?? "Project not found"}</p>
-      <Link to="/projects" className="text-gold text-xs hover:text-gold-bright">Back to projects</Link>
+      <Link to="/projects" className="text-accent text-xs hover:text-accent-hover transition-colors duration-150">Back to projects</Link>
     </div>
   );
 
@@ -48,16 +48,16 @@ export function ProjectDetailPage() {
   return (
     <div className="h-screen flex flex-col">
       {/* Header */}
-      <div className="border-b border-border-subtle bg-surface-1/50 px-6 py-4">
+      <div className="border-b border-border-subtle px-6 py-4">
         <div className="flex items-center gap-4">
-          <Link to="/projects" className="text-text-muted hover:text-text transition-colors"><ArrowLeft size={18} /></Link>
+          <Link to="/projects" className="text-text-muted hover:text-text-primary transition-colors duration-150"><ArrowLeft size={18} /></Link>
           <div className="flex-1 min-w-0">
-            <h1 className="text-sm font-semibold text-text">{project.name}</h1>
+            <h1 className="text-sm font-semibold text-text-primary">{project.name}</h1>
             <p className="text-xs text-text-muted truncate">{project.description}</p>
           </div>
-          <span className="text-[10px] text-text-muted font-mono">max {project.maxAgents} agents</span>
+          <span className="text-[10px] text-text-muted font-mono bg-surface-elevated px-2 py-1 rounded">max {project.maxAgents} agents</span>
           {tab === "board" && (
-            <button className="flex items-center gap-1.5 px-3 py-1.5 bg-gold hover:bg-gold-bright text-surface text-xs font-semibold rounded-lg transition-colors">
+            <button className="flex items-center gap-1.5 px-3 py-1.5 bg-accent hover:bg-accent-hover text-bg text-xs font-semibold rounded-lg transition-colors duration-150">
               <Plus size={14} /> Add Task
             </button>
           )}
@@ -67,8 +67,8 @@ export function ProjectDetailPage() {
             <button
               key={t}
               onClick={() => setTab(t)}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
-                tab === t ? "bg-surface-3 text-gold" : "text-text-muted hover:text-text-secondary"
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors duration-150 ${
+                tab === t ? "bg-accent-muted text-accent" : "text-text-muted hover:text-text-secondary"
               }`}
             >
               {t === "board" ? <LayoutGrid size={12} /> : <FileText size={12} />}
@@ -91,17 +91,17 @@ export function ProjectDetailPage() {
                 </div>
                 <div className="space-y-2.5">
                   {tasksByStatus[key].length === 0 ? (
-                    <div className="bg-surface-1 rounded-xl border border-dashed border-border p-8 text-center">
+                    <div className="bg-surface rounded-xl border border-dashed border-border p-8 text-center">
                       <p className="text-[11px] text-text-muted/40">No tasks</p>
                     </div>
                   ) : tasksByStatus[key].map((task, i) => (
-                    <div key={task.filename ?? i} className="bg-surface-1 rounded-xl border border-border-subtle p-4 hover:border-gold/15 transition-all duration-300">
-                      <h4 className="text-xs font-medium text-text mb-1">{task.title}</h4>
+                    <div key={task.filename ?? i} className="bg-surface rounded-xl border border-border p-4 hover:border-accent/20 transition-colors duration-150">
+                      <h4 className="text-xs font-medium text-text-primary mb-1">{task.title}</h4>
                       {task.description && (
                         <p className="text-[11px] text-text-muted leading-relaxed mb-2.5 line-clamp-3">{task.description}</p>
                       )}
                       <div className="flex flex-wrap gap-2">
-                        {task.agent && <span className="flex items-center gap-1 text-[10px] text-gold font-mono"><User size={9} />{task.agent}</span>}
+                        {task.agent && <span className="flex items-center gap-1 text-[10px] text-accent font-mono"><User size={9} />{task.agent}</span>}
                         {task.started && <span className="flex items-center gap-1 text-[10px] text-text-muted font-mono"><Clock size={9} />{new Date(task.started).toLocaleDateString()}</span>}
                       </div>
                     </div>
@@ -116,13 +116,13 @@ export function ProjectDetailPage() {
       {/* Docs */}
       {tab === "docs" && (
         <div className="flex-1 flex overflow-hidden">
-          <div className="w-48 border-r border-border-subtle bg-surface overflow-y-auto p-2.5">
+          <div className="w-48 border-r border-border-subtle bg-bg overflow-y-auto p-2.5">
             {docs.map(doc => (
               <button
                 key={doc.path}
                 onClick={() => setSelectedDoc(doc.path)}
-                className={`w-full text-left px-3 py-2 rounded-lg text-xs transition-all mb-0.5 ${
-                  selectedDoc === doc.path ? "bg-surface-2 text-gold" : "text-text-muted hover:bg-surface-1 hover:text-text-secondary"
+                className={`w-full text-left px-3 py-2 rounded-lg text-xs transition-colors duration-150 mb-0.5 ${
+                  selectedDoc === doc.path ? "bg-accent-muted text-accent" : "text-text-muted hover:bg-surface hover:text-text-secondary"
                 }`}
               >
                 <div className="flex items-center gap-2"><FileText size={11} /><span className="truncate">{doc.name}</span></div>
@@ -131,13 +131,13 @@ export function ProjectDetailPage() {
           </div>
           <div className="flex-1 overflow-y-auto p-6">
             {activeDoc ? (
-              <div className="max-w-3xl animate-fade-in">
+              <div className="max-w-3xl">
                 <div className="flex items-center gap-2 mb-5">
-                  <FileText size={14} className="text-gold/60" />
+                  <FileText size={14} className="text-accent/60" />
                   <h2 className="text-xs font-semibold text-text-secondary">{activeDoc.name}</h2>
                   <span className="text-[10px] text-text-muted font-mono">{activeDoc.path}</span>
                 </div>
-                <div className="bg-surface-1 rounded-xl border border-border-subtle p-6">
+                <div className="bg-surface rounded-xl border border-border p-6">
                   <pre className="whitespace-pre-wrap text-xs text-text-secondary font-mono leading-relaxed">{activeDoc.content}</pre>
                 </div>
               </div>

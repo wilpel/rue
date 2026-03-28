@@ -10,14 +10,11 @@ const nav = [
 
 export function Layout() {
   return (
-    <div className="min-h-screen bg-surface flex">
-      {/* Gold accent line at very top */}
-      <div className="fixed top-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-gold/40 to-transparent z-50" />
-
-      <nav className="w-52 bg-surface-1 border-r border-border-subtle flex flex-col p-3 pt-6">
+    <div className="min-h-screen bg-bg flex">
+      <nav className="w-[200px] bg-bg border-r border-border flex flex-col px-3 py-5">
         <div className="px-3 mb-8 flex items-center gap-2.5">
-          <div className="w-2 h-2 rounded-full bg-gold animate-pulse-gold" />
-          <span className="text-lg font-semibold text-gold tracking-wide">rue</span>
+          <div className="w-2 h-2 rounded-full bg-accent animate-pulse-accent" />
+          <span className="text-base font-bold text-text-primary tracking-tight">rue</span>
         </div>
 
         <div className="flex flex-col gap-0.5">
@@ -27,10 +24,10 @@ export function Layout() {
               to={to}
               end={to === "/"}
               className={({ isActive }) =>
-                `flex items-center gap-3 px-3 py-2 rounded-lg text-[13px] font-medium transition-all duration-200 ${
+                `flex items-center gap-3 px-3 py-2 rounded-lg text-[13px] font-medium transition-colors duration-150 ${
                   isActive
-                    ? "bg-gold/10 text-gold"
-                    : "text-text-muted hover:text-text-secondary hover:bg-surface-2"
+                    ? "bg-accent-muted text-accent"
+                    : "text-text-muted hover:text-text-secondary hover:bg-surface"
                 }`
               }
             >
@@ -44,8 +41,8 @@ export function Layout() {
           <NavLink
             to="/settings"
             className={({ isActive }) =>
-              `flex items-center gap-3 px-3 py-2 rounded-lg text-[13px] font-medium transition-all duration-200 ${
-                isActive ? "bg-gold/10 text-gold" : "text-text-muted hover:text-text-secondary hover:bg-surface-2"
+              `flex items-center gap-3 px-3 py-2 rounded-lg text-[13px] font-medium transition-colors duration-150 ${
+                isActive ? "bg-accent-muted text-accent" : "text-text-muted hover:text-text-secondary hover:bg-surface"
               }`
             }
           >

@@ -57,38 +57,38 @@ export function ChatPage() {
 
   return (
     <div className="h-screen flex flex-col">
-      <div className="border-b border-border-subtle bg-surface-1/50 px-6 py-3.5">
-        <h1 className="text-sm font-semibold text-text-secondary tracking-wide">Chat</h1>
+      <div className="border-b border-border-subtle px-6 py-3">
+        <h1 className="text-sm font-semibold text-text-secondary">Chat</h1>
       </div>
 
       <div className="flex-1 overflow-y-auto px-6 py-6">
         <div className="max-w-2xl mx-auto space-y-4">
           {messages.length === 0 && (
-            <div className="text-center py-24 animate-fade-in">
-              <div className="w-2 h-2 rounded-full bg-gold/40 mx-auto mb-4" />
+            <div className="text-center py-24">
+              <div className="w-2 h-2 rounded-full bg-accent/40 mx-auto mb-4" />
               <p className="text-text-muted text-sm">Start a conversation with Rue</p>
             </div>
           )}
           {messages.map((msg) => (
             <div
               key={msg.id}
-              className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"} animate-fade-in`}
+              className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
             >
               <div className={`max-w-[75%] ${
                 msg.role === "user"
-                  ? "bg-gold text-surface rounded-2xl rounded-br-md px-4 py-2.5"
+                  ? "bg-accent text-bg rounded-2xl rounded-br-md px-4 py-2.5"
                   : msg.role === "system"
                     ? "text-text-muted text-xs italic px-2 py-1"
-                    : "bg-surface-2 border border-border-subtle rounded-2xl rounded-bl-md px-4 py-2.5"
+                    : "bg-surface border border-border rounded-2xl rounded-bl-md px-4 py-2.5"
               }`}>
                 {msg.role === "assistant" && (
-                  <p className="text-[10px] font-semibold text-gold/60 uppercase tracking-wider mb-1.5">rue</p>
+                  <p className="text-[10px] font-semibold text-accent/50 uppercase tracking-wider mb-1.5">rue</p>
                 )}
                 <p className="text-sm leading-relaxed whitespace-pre-wrap">
                   {msg.content || (msg.isStreaming ? "" : "")}
                 </p>
                 {msg.isStreaming && (
-                  <span className="inline-block w-1.5 h-4 bg-gold rounded-sm ml-0.5 animate-pulse-gold" />
+                  <span className="inline-block w-1.5 h-4 bg-accent rounded-sm ml-0.5 animate-pulse-accent" />
                 )}
               </div>
             </div>
@@ -97,18 +97,18 @@ export function ChatPage() {
         </div>
       </div>
 
-      <form onSubmit={handleSubmit} className="border-t border-border-subtle bg-surface-1/50 p-4">
+      <form onSubmit={handleSubmit} className="border-t border-border-subtle p-4">
         <div className="max-w-2xl mx-auto flex gap-3">
           <input
             value={input}
             onChange={(e) => setInput(e.target.value)}
             placeholder="Type a message..."
-            className="flex-1 px-4 py-3 bg-surface-2 rounded-xl border border-border text-text placeholder-text-muted text-sm focus:outline-none focus:border-gold/30 transition-colors"
+            className="flex-1 px-4 py-3 bg-surface rounded-xl border border-border text-text-primary placeholder-text-muted text-sm focus:outline-none focus:border-accent/30 transition-colors duration-150"
           />
           <button
             type="submit"
             disabled={sending || !input.trim()}
-            className="px-4 py-3 bg-gold hover:bg-gold-bright disabled:bg-surface-3 disabled:text-text-muted text-surface font-medium rounded-xl transition-all duration-200"
+            className="px-4 py-3 bg-accent hover:bg-accent-hover disabled:bg-surface-elevated disabled:text-text-muted text-bg font-medium rounded-xl transition-colors duration-150"
           >
             <Send size={16} />
           </button>
