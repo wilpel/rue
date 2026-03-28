@@ -96,7 +96,10 @@ export function ProjectDetailPage() {
                     </div>
                   ) : tasksByStatus[key].map((task, i) => (
                     <div key={task.filename ?? i} className="bg-surface-1 rounded-xl border border-border-subtle p-4 hover:border-gold/15 transition-all duration-300">
-                      <h4 className="text-xs font-medium text-text mb-2.5">{task.title}</h4>
+                      <h4 className="text-xs font-medium text-text mb-1">{task.title}</h4>
+                      {task.description && (
+                        <p className="text-[11px] text-text-muted leading-relaxed mb-2.5 line-clamp-3">{task.description}</p>
+                      )}
                       <div className="flex flex-wrap gap-2">
                         {task.agent && <span className="flex items-center gap-1 text-[10px] text-gold font-mono"><User size={9} />{task.agent}</span>}
                         {task.started && <span className="flex items-center gap-1 text-[10px] text-text-muted font-mono"><Clock size={9} />{new Date(task.started).toLocaleDateString()}</span>}

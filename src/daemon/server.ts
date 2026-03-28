@@ -327,10 +327,17 @@ export class DaemonServer {
       }
     }
 
-    // Parse markdown title (first # heading)
-    const titleMatch = content.match(/^#\s+(.+)$/m);
+    // Parse markdown title and description
+    // Content after frontmatter
+    const body = fmMatch ? content.slice(fmMatch[0].length).trim() : content.trim();
+    const titleMatch = body.match(/^#\s+(.+)$/m);
     if (titleMatch) {
       task.title = titleMatch[1].trim();
+      // Description is everything after the title line
+      const afterTitle = body.slice(body.indexOf(titleMatch[0]) + titleMatch[0].length).trim();
+      if (afterTitle) {
+        task.description = afterTitle;
+      }
     }
 
     if (!task.title) {

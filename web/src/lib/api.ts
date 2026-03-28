@@ -22,6 +22,7 @@ export interface ProjectSummary {
 export interface Task {
   filename: string;
   title: string;
+  description?: string;
   status: string;
   agent?: string;
   started?: string;

@@ -243,8 +243,9 @@ switch (command) {
   case "add-task": {
     const name = getArg("project");
     const taskTitle = getArg("task");
+    const taskDescription = getArg("description") ?? "";
     if (!name || !taskTitle) {
-      console.error("Usage: run.ts add-task --project <name> --task <title>");
+      console.error("Usage: run.ts add-task --project <name> --task <title> [--description <desc>]");
       process.exit(1);
     }
     const projDir = projectPath(name);
@@ -267,7 +268,7 @@ switch (command) {
       started: null,
       completed: null,
     };
-    const content = serializeTaskFile(fm, taskTitle, "");
+    const content = serializeTaskFile(fm, taskTitle, taskDescription);
     fs.writeFileSync(path.join(projDir, "tasks", filename), content);
 
     // Emit trigger event
