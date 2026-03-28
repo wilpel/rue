@@ -68,7 +68,10 @@ async function handleCmd(
               cwd: workdir,
               // Our own system prompt — not Claude Code's preset
               systemPrompt,
-              tools: { type: "preset", preset: "claude_code" },
+              tools: [
+                "Read", "Write", "Edit", "Bash", "Glob", "Grep",
+                "WebSearch", "WebFetch", "Agent",
+              ],
               allowedTools: [
                 "Read", "Write", "Edit", "Bash", "Glob", "Grep",
                 "WebSearch", "WebFetch", "Agent",
