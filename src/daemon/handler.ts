@@ -66,7 +66,12 @@ async function handleCmd(
             prompt: text,
             options: {
               cwd: workdir,
-              systemPrompt,
+              // Use Claude Code's base prompt but append our system guide
+              systemPrompt: {
+                type: "preset",
+                preset: "claude_code",
+                append: systemPrompt,
+              },
               tools: { type: "preset", preset: "claude_code" },
               allowedTools: [
                 "Read", "Write", "Edit", "Bash", "Glob", "Grep",
@@ -77,6 +82,8 @@ async function handleCmd(
               maxTurns: 50,
               abortController: new AbortController(),
               includePartialMessages: true,
+              // Don't load Claude Code's own settings/skills — use ours
+              settingSources: [],
               ...(existingSessionId ? { resume: existingSessionId } : {}),
             },
           });
