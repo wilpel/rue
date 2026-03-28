@@ -45,23 +45,97 @@ async function handleCmd(
       case "ask": {
         const text = frame.args.text as string;
         const systemPrompt = deps.assembler.assemble(text);
-        const unsub = deps.bus.on("agent:progress", (payload) => {
-          send({ type: "stream", agentId: payload.id, chunk: payload.chunk });
-        });
+        const workdir = (frame.args.workdir as string) ?? process.cwd();
+
+        // Run Claude directly for the main conversation — no supervisor,
+        // no agent:spawned events. The supervisor is for background sub-agents.
         try {
-          const result = await deps.supervisor.spawn({
-            task: text,
-            lane: "main",
-            workdir: (frame.args.workdir as string) ?? process.cwd(),
-            systemPrompt,
-            timeout: 300_000,
+          const { query } = await import("@anthropic-ai/claude-agent-sdk");
+
+          const q = query({
+            prompt: text,
+            options: {
+              cwd: workdir,
+              systemPrompt,
+              tools: { type: "preset", preset: "claude_code" },
+              allowedTools: [
+                "Read", "Write", "Edit", "Bash", "Glob", "Grep",
+                "WebSearch", "WebFetch", "Agent",
+              ],
+              permissionMode: "bypassPermissions",
+              allowDangerouslySkipPermissions: true,
+              maxTurns: 50,
+              abortController: new AbortController(),
+              includePartialMessages: true,
+            },
           });
-          send({ type: "result", id: frame.id, data: { output: result.output, cost: result.cost } });
-        } finally {
-          unsub();
+
+          let streamedText = "";
+          let cost = 0;
+
+          for await (const message of q) {
+            switch (message.type) {
+              case "stream_event": {
+                const event = (message as {
+                  event?: { type?: string; delta?: { type?: string; text?: string } };
+                }).event;
+                if (
+                  event?.type === "content_block_delta" &&
+                  event.delta?.type === "text_delta" &&
+                  event.delta.text
+                ) {
+                  streamedText += event.delta.text;
+                  send({ type: "stream", agentId: "main", chunk: event.delta.text });
+                }
+                break;
+              }
+
+              case "assistant": {
+                const content = (message as {
+                  message: { content: Array<{ type: string; text?: string }> };
+                }).message.content;
+                const fullText = content
+                  .filter((b) => b.type === "text")
+                  .map((b) => b.text ?? "")
+                  .join("");
+
+                // Fallback: if no streaming events delivered text, send the full block
+                if (!streamedText && fullText) {
+                  streamedText = fullText;
+                  send({ type: "stream", agentId: "main", chunk: fullText });
+                }
+                break;
+              }
+
+              case "result": {
+                const resultMsg = message as {
+                  subtype: string;
+                  total_cost_usd: number;
+                  result?: string;
+                };
+                cost = resultMsg.total_cost_usd;
+
+                if (resultMsg.subtype === "success" && resultMsg.result && !streamedText) {
+                  streamedText = resultMsg.result;
+                  send({ type: "stream", agentId: "main", chunk: resultMsg.result });
+                }
+                break;
+              }
+            }
+          }
+
+          send({
+            type: "result",
+            id: frame.id,
+            data: { output: streamedText, cost },
+          });
+        } catch (sdkError) {
+          const message = sdkError instanceof Error ? sdkError.message : String(sdkError);
+          send({ type: "error", id: frame.id, code: "SDK_ERROR", message });
         }
         break;
       }
+
       case "status": {
         const agents = deps.supervisor.listAgents();
         send({
@@ -79,10 +153,16 @@ async function handleCmd(
         });
         break;
       }
+
       case "agents": {
-        send({ type: "result", id: frame.id, data: { agents: deps.supervisor.listAgents() } });
+        send({
+          type: "result",
+          id: frame.id,
+          data: { agents: deps.supervisor.listAgents() },
+        });
         break;
       }
+
       default:
         send({
           type: "error",
