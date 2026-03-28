@@ -94,12 +94,6 @@ export class DaemonClient {
     return new Promise((resolve, reject) => {
       this.pending.set(id, { resolve, reject, onStream });
       this.send({ type: "cmd", id, cmd, args });
-      setTimeout(() => {
-        if (this.pending.has(id)) {
-          this.pending.delete(id);
-          reject(new Error(`Command "${cmd}" timed out`));
-        }
-      }, 300_000);
     });
   }
 

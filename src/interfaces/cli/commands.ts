@@ -2,6 +2,7 @@ import { Command } from "commander";
 import { DaemonClient } from "./client.js";
 import { DaemonServer } from "../../daemon/server.js";
 import { loadConfig } from "../../shared/config.js";
+import { TelegramStore } from "../telegram/store.js";
 import * as path from "node:path";
 import * as os from "node:os";
 
@@ -143,6 +144,94 @@ export function createCLI(): Command {
   daemon.command("stop").description("Stop the daemon").action(() => {
     console.log("Daemon stop — not yet implemented (use Ctrl+C in foreground mode)");
   });
+
+  // ── Telegram commands ──────────────────────────────────────────
+
+  const telegram = program.command("telegram").description("Manage Telegram bot integration");
+
+  telegram
+    .command("setup <botToken>")
+    .description("Configure the Telegram bot token")
+    .action((botToken: string) => {
+      const config = loadConfig(CONFIG_PATH);
+      const store = new TelegramStore(config.dataDir);
+      store.setBotToken(botToken);
+      console.log("Telegram bot token saved.");
+      console.log("Restart the daemon to activate the bot.");
+    });
+
+  telegram
+    .command("pair")
+    .description("Generate a pairing code for Telegram")
+    .action(() => {
+      const config = loadConfig(CONFIG_PATH);
+      const store = new TelegramStore(config.dataDir);
+
+      if (!store.getBotToken()) {
+        console.error("No bot token configured. Run: rue telegram setup <token>");
+        process.exit(1);
+      }
+
+      const pairingCode = store.generatePairingCode();
+      const expiresIn = Math.round((pairingCode.expiresAt - Date.now()) / 1000);
+      console.log(`\nPairing code: ${pairingCode.code}`);
+      console.log(`Expires in ${expiresIn} seconds.`);
+      console.log(`\nSend this to your Telegram bot: /pair ${pairingCode.code}`);
+    });
+
+  telegram
+    .command("users")
+    .description("List paired Telegram users")
+    .action(() => {
+      const config = loadConfig(CONFIG_PATH);
+      const store = new TelegramStore(config.dataDir);
+      const users = store.getPairedUsers();
+
+      if (users.length === 0) {
+        console.log("No paired users.");
+        return;
+      }
+
+      console.log("Paired users:\n");
+      for (const user of users) {
+        const name = user.telegramUsername ? `@${user.telegramUsername}` : `ID: ${user.telegramId}`;
+        console.log(`  ${name} (paired ${user.pairedAt})`);
+      }
+    });
+
+  telegram
+    .command("remove <telegramId>")
+    .description("Remove a paired Telegram user by their ID")
+    .action((telegramId: string) => {
+      const config = loadConfig(CONFIG_PATH);
+      const store = new TelegramStore(config.dataDir);
+      const id = parseInt(telegramId, 10);
+      if (isNaN(id)) {
+        console.error("Invalid Telegram ID.");
+        process.exit(1);
+      }
+      if (store.removePairedUser(id)) {
+        console.log(`Removed user ${telegramId}.`);
+      } else {
+        console.log(`User ${telegramId} not found.`);
+      }
+    });
+
+  telegram
+    .command("status")
+    .description("Show Telegram bot configuration status")
+    .action(() => {
+      const config = loadConfig(CONFIG_PATH);
+      const store = new TelegramStore(config.dataDir);
+      const token = store.getBotToken();
+      const users = store.getPairedUsers();
+
+      console.log(`Bot token: ${token ? "configured" : "not set"}`);
+      console.log(`Paired users: ${users.length}`);
+      if (token) {
+        console.log(`\nThe bot will start automatically with the daemon.`);
+      }
+    });
 
   return program;
 }

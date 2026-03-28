@@ -17,6 +17,8 @@ import * as path from "node:path";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import { fileURLToPath } from "node:url";
+import { TelegramBot } from "../interfaces/telegram/bot.js";
+import { TelegramStore } from "../interfaces/telegram/store.js";
 
 // Resolve the rue-bot project root (where SYSTEM.md and skills/ live)
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -41,6 +43,7 @@ export class DaemonServer {
   private identity: IdentityCore;
   private userModel: UserModel;
   private assembler: ContextAssembler;
+  private telegramBot: TelegramBot | null = null;
 
   constructor(private readonly config: DaemonServerConfig) {
     this.bus = new EventBus();
@@ -95,6 +98,9 @@ export class DaemonServer {
     // Watch for task-added events and auto-spawn agents
     this.startTaskWatcher();
 
+    // Start Telegram bot if configured
+    await this.startTelegramBot();
+
     this.bus.emit("system:started", {});
     await new Promise<void>((resolve) => {
       this.httpServer!.listen(this.config.port, resolve);
@@ -104,6 +110,7 @@ export class DaemonServer {
   async stop(): Promise<void> {
     this.bus.emit("system:shutdown", { reason: "shutdown requested" });
     if (this._taskWatcher) clearInterval(this._taskWatcher);
+    if (this.telegramBot) await this.telegramBot.stop();
     this.supervisor.shutdown();
     this.semantic.close();
     this.messages.close();
@@ -118,6 +125,33 @@ export class DaemonServer {
     if (this.httpServer) {
       await new Promise<void>((resolve) => this.httpServer!.close(() => resolve()));
       this.httpServer = null;
+    }
+  }
+
+  // ── Telegram Bot ────────────────────────────────────────────────────
+
+  private async startTelegramBot(): Promise<void> {
+    const store = new TelegramStore(this.config.dataDir);
+    const token = store.getBotToken();
+
+    if (!token) {
+      console.log("[telegram] No bot token configured — skipping Telegram integration");
+      return;
+    }
+
+    try {
+      this.telegramBot = new TelegramBot({
+        botToken: token,
+        daemonUrl: `ws://localhost:${this.config.port}`,
+        dataDir: this.config.dataDir,
+        bus: this.bus,
+      });
+      await this.telegramBot.start();
+      console.log("[telegram] Bot connected and listening");
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error(`[telegram] Failed to start bot: ${msg}`);
+      this.telegramBot = null;
     }
   }
 
