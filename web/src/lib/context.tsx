@@ -2,48 +2,27 @@ import { createContext, useContext, useEffect, useRef, useState, type ReactNode 
 import { RueClient } from "./client";
 
 const ClientContext = createContext<RueClient | null>(null);
-
-export function useClient(): RueClient {
-  const client = useContext(ClientContext);
-  if (!client) throw new Error("No RueClient");
-  return client;
-}
+export function useClient() { const c = useContext(ClientContext); if (!c) throw new Error("No client"); return c; }
 
 export function ClientProvider({ children }: { children: ReactNode }) {
-  const clientRef = useRef<RueClient | null>(null);
+  const ref = useRef<RueClient | null>(null);
   const [ready, setReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  if (!clientRef.current) clientRef.current = new RueClient();
-  const client = clientRef.current;
+  if (!ref.current) ref.current = new RueClient();
+  const client = ref.current;
 
   useEffect(() => {
-    let cancelled = false;
-    client.connect().then(() => {
-      if (cancelled) return;
-      client.subscribe(["agent:*", "task:*", "message:*"]);
-      setReady(true);
-    }).catch(() => {
-      if (cancelled) return;
-      setError("Cannot connect to Rue daemon.");
-    });
-    return () => { cancelled = true; };
+    let cancel = false;
+    client.connect().then(() => { if (!cancel) { client.subscribe(["agent:*","task:*","message:*"]); setReady(true); }
+    }).catch(() => { if (!cancel) setError("Cannot connect"); });
+    return () => { cancel = true; };
   }, [client]);
 
   if (error) return (
     <div className="h-screen flex items-center justify-center bg-bg">
-      <div className="text-center">
-        <p className="text-white text-base mb-2">Cannot connect to Rue</p>
-        <p className="text-dim text-sm">Run <code className="font-code text-amber">rue daemon start</code></p>
-      </div>
-    </div>
-  );
-
-  if (!ready) return (
-    <div className="h-screen flex items-center justify-center bg-bg">
-      <p className="text-dim text-sm">Connecting...</p>
-    </div>
-  );
-
+      <div className="text-center"><p className="text-text mb-2">Cannot connect to Rue</p>
+      <p className="text-muted text-sm">Run <code className="font-mono text-accent">rue daemon start</code></p></div>
+    </div>);
+  if (!ready) return (<div className="h-screen flex items-center justify-center bg-bg"><p className="text-muted text-sm">Connecting...</p></div>);
   return <ClientContext.Provider value={client}>{children}</ClientContext.Provider>;
 }

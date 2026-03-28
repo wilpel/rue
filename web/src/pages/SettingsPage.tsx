@@ -1,25 +1,16 @@
 export function SettingsPage() {
   return (
     <div className="h-full flex flex-col">
-      <div className="border-b border-line px-6 py-4">
-        <h1 className="text-base font-semibold text-white">Settings</h1>
+      <div className="h-12 flex items-center px-5 border-b border-line shrink-0">
+        <h1 className="text-sm font-semibold text-text">Settings</h1>
       </div>
-      <div className="flex-1 p-6">
-        <div className="max-w-md">
-          <div className="p-5 rounded-xl border border-line bg-raised">
-            <h2 className="text-[11px] font-semibold text-dim uppercase tracking-wider mb-4">Daemon</h2>
-            <div className="space-y-3">
-              {[
-                { l: "Status", v: "Connected", c: "text-green" },
-                { l: "Endpoint", v: "ws://localhost:18800", c: "font-code text-dim" },
-                { l: "Version", v: "0.1.0", c: "text-dim" },
-              ].map(({ l, v, c }) => (
-                <div key={l} className="flex justify-between">
-                  <span className="text-xs text-dim">{l}</span>
-                  <span className={`text-xs ${c}`}>{v}</span>
-                </div>
-              ))}
-            </div>
+      <div className="flex-1 p-5">
+        <div className="max-w-sm p-4 rounded-lg border border-line bg-surface">
+          <p className="text-[10px] font-semibold text-muted uppercase tracking-wider mb-3">Daemon</p>
+          <div className="space-y-2.5 text-xs">
+            <div className="flex justify-between"><span className="text-muted">Status</span><span className="text-green">Connected</span></div>
+            <div className="flex justify-between"><span className="text-muted">Endpoint</span><span className="font-mono text-muted">ws://localhost:18800</span></div>
+            <div className="flex justify-between"><span className="text-muted">Version</span><span className="text-muted">0.1.0</span></div>
           </div>
         </div>
       </div>

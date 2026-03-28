@@ -2,22 +2,23 @@
 @import url('https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&family=Geist+Mono:wght@300;400;500&display=swap');
 
 @theme {
-  --color-bg: #0a0a0a;
-  --color-raised: #141414;
-  --color-elevated: #1c1c1c;
-  --color-line: rgba(255, 255, 255, 0.07);
-  --color-line-strong: rgba(255, 255, 255, 0.12);
-  --color-amber: #e5a229;
-  --color-amber-dim: rgba(229, 162, 41, 0.12);
-  --color-white: #ececec;
-  --color-gray: #888;
-  --color-dim: #444;
+  --color-bg: #0d0d0d;
+  --color-sidebar: #141414;
+  --color-surface: #1a1a1a;
+  --color-hover: #222222;
+  --color-line: rgba(255, 255, 255, 0.08);
+  --color-accent: #d4913a;
+  --color-accent-soft: rgba(212, 145, 58, 0.12);
+  --color-text: #e8e5e0;
+  --color-secondary: #8c8985;
+  --color-muted: #4d4a47;
   --color-green: #3ecf8e;
   --color-red: #e5484d;
-  --font-body: 'Geist', -apple-system, system-ui, sans-serif;
-  --font-code: 'Geist Mono', monospace;
+  --font-body: 'Geist', system-ui, sans-serif;
+  --font-mono: 'Geist Mono', monospace;
 }
 
-* { scrollbar-width: thin; scrollbar-color: #1c1c1c transparent; }
-body { background: var(--color-bg); color: var(--color-white); font-family: var(--font-body); -webkit-font-smoothing: antialiased; }
-::selection { background: rgba(229, 162, 41, 0.25); }
+* { scrollbar-width: thin; scrollbar-color: #222 transparent; }
+body { background: var(--color-bg); color: var(--color-text); font-family: var(--font-body); -webkit-font-smoothing: antialiased; }
+::selection { background: rgba(212, 145, 58, 0.25); }
+input, textarea { font-family: inherit; }

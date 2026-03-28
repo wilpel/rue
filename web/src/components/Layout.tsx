@@ -1,56 +1,81 @@
-import { Outlet, NavLink } from "react-router-dom";
-import { MessageCircle, FolderKanban, Bot, Settings, CircleDot } from "lucide-react";
+import { Outlet, NavLink, Link, useLocation } from "react-router-dom";
+import { FolderKanban, Bot, Settings, PanelLeftClose, PanelLeft, Plus } from "lucide-react";
+import { useState, useEffect } from "react";
+import { api } from "../lib/api";
 
 export function Layout() {
+  const [collapsed, setCollapsed] = useState(false);
+  const [conversations, setConversations] = useState<Array<{ content: string }>>([]);
+  const location = useLocation();
+
+  useEffect(() => {
+    api.history(15).then(r => {
+      setConversations(r.messages.filter(m => m.role === "user").reverse().slice(0, 8));
+    }).catch(() => {});
+  }, [location.pathname]);
+
   return (
-    <div className="h-screen flex flex-col bg-bg">
-      {/* Command bar */}
-      <header className="h-12 shrink-0 border-b border-line flex items-center px-5 gap-6">
-        <NavLink to="/" className="flex items-center gap-2 mr-4">
-          <CircleDot size={14} className="text-amber" />
-          <span className="text-sm font-semibold text-white tracking-tight">rue</span>
-        </NavLink>
-
-        <div className="flex items-center gap-1 h-full">
-          <Tab to="/chat" label="Chat" icon={MessageCircle} />
-          <Tab to="/projects" label="Projects" icon={FolderKanban} />
-          <Tab to="/agents" label="Agents" icon={Bot} />
+    <div className="h-screen flex bg-bg">
+      {/* Sidebar */}
+      <div className={`${collapsed ? "w-14" : "w-64"} shrink-0 bg-sidebar flex flex-col border-r border-line transition-all duration-200`}>
+        {/* Top */}
+        <div className="h-13 flex items-center justify-between px-3 border-b border-line">
+          {!collapsed && (
+            <Link to="/" className="flex items-center gap-2 px-2">
+              <div className="w-2 h-2 rounded-full bg-accent" />
+              <span className="text-sm font-semibold text-text">rue</span>
+            </Link>
+          )}
+          <button onClick={() => setCollapsed(!collapsed)} className="p-1.5 rounded-md text-muted hover:text-secondary hover:bg-hover transition-colors">
+            {collapsed ? <PanelLeft size={16} /> : <PanelLeftClose size={16} />}
+          </button>
         </div>
 
-        <div className="ml-auto">
-          <NavLink
-            to="/settings"
-            className={({ isActive }) =>
-              `p-1.5 rounded-md transition-colors ${isActive ? "text-white" : "text-dim hover:text-gray"}`
-            }
-          >
-            <Settings size={15} />
-          </NavLink>
+        {/* New chat button */}
+        <div className="p-2">
+          <Link to="/" className={`flex items-center gap-2 ${collapsed ? "justify-center" : ""} px-3 py-2 rounded-lg border border-line hover:bg-hover text-secondary hover:text-text transition-colors text-[13px]`}>
+            <Plus size={14} />
+            {!collapsed && "New chat"}
+          </Link>
         </div>
-      </header>
+
+        {/* Conversation history */}
+        {!collapsed && (
+          <div className="flex-1 overflow-y-auto px-2 py-1">
+            <p className="px-3 py-1.5 text-[10px] font-semibold text-muted uppercase tracking-widest">Recent</p>
+            {conversations.map((c, i) => (
+              <Link key={i} to="/chat" className="block px-3 py-1.5 rounded-lg text-xs text-secondary hover:text-text hover:bg-hover transition-colors truncate">
+                {c.content}
+              </Link>
+            ))}
+          </div>
+        )}
+
+        {/* Bottom nav */}
+        <div className="border-t border-line p-2 space-y-0.5">
+          <SidebarLink to="/projects" icon={FolderKanban} label="Projects" collapsed={collapsed} />
+          <SidebarLink to="/agents" icon={Bot} label="Agents" collapsed={collapsed} />
+          <SidebarLink to="/settings" icon={Settings} label="Settings" collapsed={collapsed} />
+        </div>
+      </div>
 
       {/* Content */}
-      <main className="flex-1 overflow-auto">
+      <main className="flex-1 overflow-hidden">
         <Outlet />
       </main>
     </div>
   );
 }
 
-function Tab({ to, label, icon: Icon }: { to: string; label: string; icon: React.ComponentType<{ size?: number }> }) {
+function SidebarLink({ to, icon: Icon, label, collapsed }: { to: string; icon: React.ComponentType<{size?: number}>; label: string; collapsed: boolean }) {
   return (
-    <NavLink
-      to={to}
-      className={({ isActive }) =>
-        `flex items-center gap-2 px-3 h-full text-[13px] font-medium border-b-2 transition-colors ${
-          isActive
-            ? "border-amber text-white"
-            : "border-transparent text-dim hover:text-gray"
-        }`
-      }
-    >
-      <Icon size={14} />
-      {label}
+    <NavLink to={to} className={({ isActive }) =>
+      `flex items-center gap-3 ${collapsed ? "justify-center" : ""} px-3 py-2 rounded-lg text-[13px] transition-colors ${
+        isActive ? "bg-accent-soft text-accent" : "text-muted hover:text-secondary hover:bg-hover"
+      }`
+    }>
+      <Icon size={16} />
+      {!collapsed && label}
     </NavLink>
   );
 }
