@@ -155,7 +155,7 @@ export function App({ client }: AppProps) {
       setIsLoading(true);
 
       try {
-        await client.ask(text, {
+        const result = await client.ask(text, {
           onStream: (chunk) => {
             setMessages((prev) => {
               const updated = [...prev];
@@ -171,12 +171,14 @@ export function App({ client }: AppProps) {
           },
         });
 
+        // Finalize: use result.output as fallback if streaming didn't deliver
         setMessages((prev) => {
           const updated = [...prev];
           const last = updated[updated.length - 1];
           if (last && last.role === "assistant") {
             updated[updated.length - 1] = {
               ...last,
+              content: last.content || result.output || "(no response)",
               isStreaming: false,
             };
           }

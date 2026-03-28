@@ -12,7 +12,6 @@ export class ClaudeProcess {
   constructor(private readonly config: AgentConfig) {}
 
   get pid(): number | null {
-    // SDK manages the subprocess internally; no direct PID access
     return this._isRunning ? -1 : null;
   }
 
@@ -38,7 +37,6 @@ export class ClaudeProcess {
     this.abortController = new AbortController();
 
     try {
-      // Dynamic import to allow mocking in tests
       const { query } = await import("@anthropic-ai/claude-agent-sdk");
 
       const q = query({
@@ -56,10 +54,11 @@ export class ClaudeProcess {
           maxTurns: this.config.maxTurns,
           maxBudgetUsd: this.config.budget,
           abortController: this.abortController,
+          includePartialMessages: true,
         },
       });
 
-      let output = "";
+      let streamedText = "";
       let sessionId: string | undefined;
       let cost = 0;
       let numTurns = 0;
@@ -68,21 +67,19 @@ export class ClaudeProcess {
       for await (const message of q) {
         switch (message.type) {
           case "system": {
-            if (message.subtype === "init") {
-              sessionId = message.session_id;
+            if ((message as { subtype?: string }).subtype === "init") {
+              sessionId = (message as { session_id: string }).session_id;
               this._sessionId = sessionId;
             }
             break;
           }
 
-          case "assistant": {
-            // Extract text content from assistant messages
-            const textBlocks = message.message.content.filter(
-              (block: { type: string }) => block.type === "text",
-            );
-            for (const block of textBlocks) {
-              const text = (block as { type: "text"; text: string }).text;
-              output += text;
+          case "stream_event": {
+            // Partial streaming events — token by token
+            const event = (message as { event?: { type?: string; delta?: { type?: string; text?: string } } }).event;
+            if (event?.type === "content_block_delta" && event.delta?.type === "text_delta" && event.delta.text) {
+              const text = event.delta.text;
+              streamedText += text;
               for (const cb of this.outputCallbacks) {
                 cb(text);
               }
@@ -90,23 +87,61 @@ export class ClaudeProcess {
             break;
           }
 
+          case "assistant": {
+            // Full assistant message — extract text for non-streaming fallback
+            const content = (message as { message: { content: Array<{ type: string; text?: string }> } }).message.content;
+            const textBlocks = content.filter((b) => b.type === "text");
+            const fullText = textBlocks.map((b) => b.text ?? "").join("");
+
+            // If we didn't get streaming events, emit the full text
+            if (!streamedText && fullText) {
+              streamedText = fullText;
+              for (const cb of this.outputCallbacks) {
+                cb(fullText);
+              }
+            }
+            break;
+          }
+
           case "result": {
-            cost = message.total_cost_usd;
-            numTurns = message.num_turns;
+            const resultMsg = message as {
+              subtype: string;
+              total_cost_usd: number;
+              num_turns: number;
+              result?: string;
+              errors?: string[];
+              usage: {
+                input_tokens: number;
+                output_tokens: number;
+                cache_read_input_tokens?: number;
+                cache_creation_input_tokens?: number;
+              };
+            };
+            cost = resultMsg.total_cost_usd;
+            numTurns = resultMsg.num_turns;
             usage = {
-              inputTokens: message.usage.input_tokens,
-              outputTokens: message.usage.output_tokens,
-              cacheReadInputTokens: message.usage.cache_read_input_tokens ?? 0,
-              cacheCreationInputTokens: message.usage.cache_creation_input_tokens ?? 0,
+              inputTokens: resultMsg.usage.input_tokens,
+              outputTokens: resultMsg.usage.output_tokens,
+              cacheReadInputTokens: resultMsg.usage.cache_read_input_tokens ?? 0,
+              cacheCreationInputTokens: resultMsg.usage.cache_creation_input_tokens ?? 0,
             };
 
-            if (message.subtype === "success") {
-              output = message.result || output;
-            } else {
-              // Error results — append error info
-              const errors = (message as { errors?: string[] }).errors ?? [];
+            if (resultMsg.subtype === "success" && resultMsg.result) {
+              // Use result text if we somehow missed streaming
+              if (!streamedText) {
+                streamedText = resultMsg.result;
+                for (const cb of this.outputCallbacks) {
+                  cb(resultMsg.result!);
+                }
+              }
+            } else if (resultMsg.subtype !== "success") {
+              const errors = resultMsg.errors ?? [];
               if (errors.length > 0) {
-                output += `\n[Error: ${errors.join(", ")}]`;
+                const errText = `\n[Error: ${errors.join(", ")}]`;
+                streamedText += errText;
+                for (const cb of this.outputCallbacks) {
+                  cb(errText);
+                }
               }
             }
             break;
@@ -114,11 +149,12 @@ export class ClaudeProcess {
         }
       }
 
+      const finalOutput = streamedText;
       this._isRunning = false;
-      this._output = output;
+      this._output = finalOutput;
 
       return {
-        output,
+        output: finalOutput,
         exitCode: 0,
         cost,
         durationMs: Date.now() - startedAt,
@@ -128,11 +164,11 @@ export class ClaudeProcess {
       };
     } catch (error) {
       this._isRunning = false;
-      const message = error instanceof Error ? error.message : String(error);
-      this._output = message;
+      const errMsg = error instanceof Error ? error.message : String(error);
+      this._output = errMsg;
 
       return {
-        output: message,
+        output: errMsg,
         exitCode: 1,
         cost: 0,
         durationMs: Date.now() - startedAt,
@@ -148,10 +184,6 @@ export class ClaudeProcess {
   }
 
   sendInput(_text: string): void {
-    // The SDK query() is prompt-based, not interactive stdin.
-    // For steering, we'd need to use the V2 session API or
-    // abort and re-query with accumulated context.
-    // This is a no-op for now — steering is handled at the
-    // supervisor level by killing and re-spawning with context.
+    // SDK query() is prompt-based. Steering is handled at supervisor level.
   }
 }
