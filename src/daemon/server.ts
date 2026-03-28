@@ -429,11 +429,54 @@ export class DaemonServer {
     const taskFilePath = path.join(projectDir, taskFile);
     const workDir = path.join(projectDir, "work");
 
-    // Read AGENTS.md for system prompt
-    let agentsPrompt = "You are a project agent. Complete the assigned task.";
+    // Build system prompt: base instructions + project-specific AGENTS.md
+    let projectPrompt = "";
     if (fs.existsSync(agentsMdPath)) {
-      agentsPrompt = fs.readFileSync(agentsMdPath, "utf-8");
+      projectPrompt = fs.readFileSync(agentsMdPath, "utf-8");
     }
+
+    // Determine the actual work directory
+    let cwd = workDir;
+    if (fs.existsSync(workDir)) {
+      const entries = fs.readdirSync(workDir);
+      if (entries.length === 1) {
+        const inner = path.join(workDir, entries[0]);
+        if (fs.statSync(inner).isDirectory()) cwd = inner;
+      }
+    }
+
+    const agentsPrompt = `# Project Agent — ${projectName}
+
+You are an autonomous agent working on project "${projectName}".
+You have been assigned a specific task. Complete it fully.
+
+## How you work
+
+1. You are running in: ${cwd}
+2. This is your working directory — all code, files, and changes go here.
+3. Do NOT modify files outside this directory.
+
+## Documentation
+
+The project has a docs/ folder at: ${path.join(projectDir, "docs")}
+- While working, if you discover something important, create or update files in the project docs/ folder.
+- Keep docs/notes.md updated with decisions, discoveries, and context for future agents.
+- If your task is to write documentation, create the doc files in the repo's docs/ directory (inside the working directory).
+
+## Task lifecycle
+
+- Your task status has already been set to "in-progress" — just do the work.
+- When you finish, summarize what you accomplished.
+- If you get stuck, explain what went wrong so it can be retried.
+
+## Quality
+
+- Write clean, working code/docs.
+- If working on code: run tests and type-check before finishing.
+- If writing docs: make them clear, accurate, and useful.
+- Commit your changes with descriptive messages.
+
+${projectPrompt ? "## Project-Specific Instructions\n\n" + projectPrompt : ""}`;
 
     // Read the full task file for context
     let taskContent = taskDescription;
@@ -447,17 +490,6 @@ export class DaemonServer {
       content = content.replace(/status:\s*\S+/, "status: in-progress");
       content = content.replace(/started:\s*\S+/, `started: ${new Date().toISOString()}`);
       fs.writeFileSync(taskFilePath, content);
-    }
-
-    // Determine the actual work directory
-    let cwd = workDir;
-    if (fs.existsSync(workDir)) {
-      const entries = fs.readdirSync(workDir);
-      if (entries.length === 1) {
-        // Single dir inside work/ — use it as cwd
-        const inner = path.join(workDir, entries[0]);
-        if (fs.statSync(inner).isDirectory()) cwd = inner;
-      }
     }
 
     // Emit agent spawned event
