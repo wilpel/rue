@@ -66,12 +66,8 @@ async function handleCmd(
             prompt: text,
             options: {
               cwd: workdir,
-              // Use Claude Code's base prompt but append our system guide
-              systemPrompt: {
-                type: "preset",
-                preset: "claude_code",
-                append: systemPrompt,
-              },
+              // Our own system prompt — not Claude Code's preset
+              systemPrompt,
               tools: { type: "preset", preset: "claude_code" },
               allowedTools: [
                 "Read", "Write", "Edit", "Bash", "Glob", "Grep",
