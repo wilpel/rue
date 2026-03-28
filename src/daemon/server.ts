@@ -92,6 +92,9 @@ export class DaemonServer {
       });
     });
 
+    // Watch for task-added events and auto-spawn agents
+    this.startTaskWatcher();
+
     this.bus.emit("system:started", {});
     await new Promise<void>((resolve) => {
       this.httpServer!.listen(this.config.port, resolve);
@@ -100,6 +103,7 @@ export class DaemonServer {
 
   async stop(): Promise<void> {
     this.bus.emit("system:shutdown", { reason: "shutdown requested" });
+    if (this._taskWatcher) clearInterval(this._taskWatcher);
     this.supervisor.shutdown();
     this.semantic.close();
     this.messages.close();
@@ -349,5 +353,163 @@ export class DaemonServer {
     }
 
     return task;
+  }
+
+  // ── Task Watcher — auto-spawn agents on new tasks ──────────────
+
+  private _taskWatcher: NodeJS.Timeout | null = null;
+  private lastEventTimestamp = 0;
+
+  private startTaskWatcher(): void {
+    const eventsDir = path.join(os.homedir(), ".rue", "workspace", "events");
+    const eventFile = path.join(eventsDir, "task-added.json");
+
+    this._taskWatcher = setInterval(() => {
+      if (!fs.existsSync(eventFile)) return;
+
+      try {
+        const raw = fs.readFileSync(eventFile, "utf-8");
+        const event = JSON.parse(raw) as {
+          type: string;
+          project: string;
+          taskFile: string;
+          task: string;
+          timestamp: number;
+        };
+
+        // Only process new events
+        if (event.timestamp <= this.lastEventTimestamp) return;
+        this.lastEventTimestamp = event.timestamp;
+
+        this.spawnProjectAgent(event.project, event.taskFile, event.task);
+      } catch {
+        // Ignore parse errors
+      }
+    }, 5000); // Check every 5 seconds
+  }
+
+  private async spawnProjectAgent(projectName: string, taskFile: string, taskDescription: string): Promise<void> {
+    const projectDir = path.join(this.projectsDir, projectName);
+    const agentsMdPath = path.join(projectDir, "AGENTS.md");
+    const taskFilePath = path.join(projectDir, taskFile);
+    const workDir = path.join(projectDir, "work");
+
+    // Read AGENTS.md for system prompt
+    let agentsPrompt = "You are a project agent. Complete the assigned task.";
+    if (fs.existsSync(agentsMdPath)) {
+      agentsPrompt = fs.readFileSync(agentsMdPath, "utf-8");
+    }
+
+    // Read the full task file for context
+    let taskContent = taskDescription;
+    if (fs.existsSync(taskFilePath)) {
+      taskContent = fs.readFileSync(taskFilePath, "utf-8");
+    }
+
+    // Update task status to in-progress
+    if (fs.existsSync(taskFilePath)) {
+      let content = fs.readFileSync(taskFilePath, "utf-8");
+      content = content.replace(/status:\s*\S+/, "status: in-progress");
+      content = content.replace(/started:\s*\S+/, `started: ${new Date().toISOString()}`);
+      fs.writeFileSync(taskFilePath, content);
+    }
+
+    // Determine the actual work directory
+    let cwd = workDir;
+    if (fs.existsSync(workDir)) {
+      const entries = fs.readdirSync(workDir);
+      if (entries.length === 1) {
+        // Single dir inside work/ — use it as cwd
+        const inner = path.join(workDir, entries[0]);
+        if (fs.statSync(inner).isDirectory()) cwd = inner;
+      }
+    }
+
+    // Emit agent spawned event
+    this.bus.emit("agent:spawned", {
+      id: `project-${projectName}-${Date.now()}`,
+      task: taskDescription,
+      lane: "sub",
+    });
+
+    // Spawn the agent via Claude SDK
+    try {
+      const { query } = await import("@anthropic-ai/claude-agent-sdk");
+
+      const prompt = `You have been assigned this task:\n\n${taskContent}\n\nComplete it now. When done, confirm what you accomplished.`;
+
+      const q = query({
+        prompt,
+        options: {
+          cwd,
+          systemPrompt: agentsPrompt,
+          tools: [
+            "Read", "Write", "Edit", "Bash", "Glob", "Grep",
+            "WebSearch", "WebFetch", "Agent",
+          ],
+          allowedTools: [
+            "Read", "Write", "Edit", "Bash", "Glob", "Grep",
+            "WebSearch", "WebFetch", "Agent",
+          ],
+          permissionMode: "bypassPermissions",
+          allowDangerouslySkipPermissions: true,
+          maxTurns: 30,
+          settingSources: [],
+        },
+      });
+
+      let output = "";
+      for await (const message of q) {
+        if (message.type === "assistant") {
+          const content = (message as { message: { content: Array<{ type: string; text?: string }> } }).message.content;
+          for (const block of content) {
+            if (block.type === "text" && block.text) output += block.text;
+          }
+        }
+        if (message.type === "result") {
+          const resultMsg = message as { subtype: string; result?: string };
+          if (resultMsg.subtype === "success" && resultMsg.result) {
+            output = resultMsg.result;
+          }
+        }
+      }
+
+      // Update task to done
+      if (fs.existsSync(taskFilePath)) {
+        let content = fs.readFileSync(taskFilePath, "utf-8");
+        content = content.replace(/status:\s*\S+/, "status: done");
+        content = content.replace(/completed:\s*\S+/, `completed: ${new Date().toISOString()}`);
+        fs.writeFileSync(taskFilePath, content);
+      }
+
+      this.bus.emit("agent:completed", {
+        id: `project-${projectName}-${Date.now()}`,
+        result: output.slice(0, 200),
+        cost: 0,
+      });
+
+      // Persist result as a push message
+      this.messages.append({
+        role: "push",
+        content: `[Project: ${projectName}] Task completed: ${taskDescription}\n\n${output.slice(0, 500)}`,
+        metadata: { project: projectName, taskFile },
+      });
+
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+
+      // Mark task as failed
+      if (fs.existsSync(taskFilePath)) {
+        let content = fs.readFileSync(taskFilePath, "utf-8");
+        content = content.replace(/status:\s*\S+/, "status: failed");
+        fs.writeFileSync(taskFilePath, content);
+      }
+
+      this.bus.emit("agent:failed", {
+        id: `project-${projectName}`,
+        error: errMsg,
+        retryable: false,
+      });
+    }
   }
 }
