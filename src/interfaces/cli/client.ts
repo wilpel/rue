@@ -1,0 +1,120 @@
+import WebSocket from "ws";
+import { frameId } from "../../shared/ids.js";
+import type { DaemonFrame } from "../../daemon/protocol.js";
+
+type PendingRequest = {
+  resolve: (data: unknown) => void;
+  reject: (error: Error) => void;
+  onStream?: (chunk: string) => void;
+};
+
+export class DaemonClient {
+  private ws: WebSocket | null = null;
+  private pending = new Map<string, PendingRequest>();
+
+  constructor(private readonly url: string) {}
+
+  async connect(): Promise<void> {
+    return new Promise((resolve, reject) => {
+      this.ws = new WebSocket(this.url);
+      this.ws.on("open", () => resolve());
+      this.ws.on("error", (err) => reject(err));
+      this.ws.on("message", (data) => {
+        const frame = JSON.parse(data.toString()) as DaemonFrame;
+        this.handleFrame(frame);
+      });
+    });
+  }
+
+  disconnect(): void {
+    this.ws?.close();
+    this.ws = null;
+  }
+
+  async ask(
+    text: string,
+    opts?: { onStream?: (chunk: string) => void },
+  ): Promise<{ output: string; cost: number }> {
+    const id = frameId();
+    return this.sendCmd(id, "ask", { text }, opts?.onStream) as Promise<{
+      output: string;
+      cost: number;
+    }>;
+  }
+
+  async status(): Promise<{ agents: unknown[] }> {
+    const id = frameId();
+    return this.sendCmd(id, "status", {}) as Promise<{ agents: unknown[] }>;
+  }
+
+  async agents(): Promise<{ agents: unknown[] }> {
+    const id = frameId();
+    return this.sendCmd(id, "agents", {}) as Promise<{ agents: unknown[] }>;
+  }
+
+  steer(agentId: string, message: string): void {
+    this.send({ type: "steer", agentId, message });
+  }
+
+  kill(agentId: string): void {
+    this.send({ type: "kill", agentId });
+  }
+
+  subscribe(channels: string[]): void {
+    this.send({ type: "subscribe", channels });
+  }
+
+  private sendCmd(
+    id: string,
+    cmd: string,
+    args: Record<string, unknown>,
+    onStream?: (chunk: string) => void,
+  ): Promise<unknown> {
+    return new Promise((resolve, reject) => {
+      this.pending.set(id, { resolve, reject, onStream });
+      this.send({ type: "cmd", id, cmd, args });
+      setTimeout(() => {
+        if (this.pending.has(id)) {
+          this.pending.delete(id);
+          reject(new Error(`Command "${cmd}" timed out`));
+        }
+      }, 300_000);
+    });
+  }
+
+  private handleFrame(frame: DaemonFrame): void {
+    switch (frame.type) {
+      case "ack":
+        break;
+      case "result": {
+        const req = this.pending.get(frame.id);
+        if (req) {
+          this.pending.delete(frame.id);
+          req.resolve(frame.data);
+        }
+        break;
+      }
+      case "error": {
+        const req = this.pending.get(frame.id);
+        if (req) {
+          this.pending.delete(frame.id);
+          req.reject(new Error(`${frame.code}: ${frame.message}`));
+        }
+        break;
+      }
+      case "stream": {
+        for (const req of this.pending.values()) {
+          req.onStream?.(frame.chunk);
+        }
+        break;
+      }
+    }
+  }
+
+  private send(data: unknown): void {
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+      throw new Error("Not connected to daemon");
+    }
+    this.ws.send(JSON.stringify(data));
+  }
+}
