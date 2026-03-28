@@ -13,6 +13,9 @@ export interface HandlerDeps {
   assembler: ContextAssembler;
 }
 
+// Track session per WebSocket connection for conversation continuity
+const sessionMap = new WeakMap<WebSocket, string>();
+
 export function createHandler(deps: HandlerDeps) {
   return async (frame: ClientFrame, ws: WebSocket): Promise<void> => {
     switch (frame.type) {
@@ -46,9 +49,8 @@ async function handleCmd(
         const text = frame.args.text as string;
         const systemPrompt = deps.assembler.assemble(text);
         const workdir = (frame.args.workdir as string) ?? process.cwd();
+        const existingSessionId = sessionMap.get(ws);
 
-        // Run Claude directly for the main conversation — no supervisor,
-        // no agent:spawned events. The supervisor is for background sub-agents.
         try {
           const { query } = await import("@anthropic-ai/claude-agent-sdk");
 
@@ -67,6 +69,8 @@ async function handleCmd(
               maxTurns: 50,
               abortController: new AbortController(),
               includePartialMessages: true,
+              // Resume previous session for conversation continuity
+              ...(existingSessionId ? { resume: existingSessionId } : {}),
             },
           });
 
@@ -75,6 +79,14 @@ async function handleCmd(
 
           for await (const message of q) {
             switch (message.type) {
+              case "system": {
+                const sysMsg = message as { subtype?: string; session_id?: string };
+                if (sysMsg.subtype === "init" && sysMsg.session_id) {
+                  sessionMap.set(ws, sysMsg.session_id);
+                }
+                break;
+              }
+
               case "stream_event": {
                 const event = (message as {
                   event?: { type?: string; delta?: { type?: string; text?: string } };
@@ -97,7 +109,6 @@ async function handleCmd(
                 };
                 const content = assistantMsg.message.content;
 
-                // Extract text
                 const fullText = content
                   .filter((b) => b.type === "text")
                   .map((b) => b.text ?? "")
@@ -108,7 +119,7 @@ async function handleCmd(
                   send({ type: "stream", agentId: "main", chunk: fullText });
                 }
 
-                // Detect tool_use blocks — emit events for Agent tool calls
+                // Detect Agent tool calls
                 for (const block of content) {
                   if (block.type === "tool_use" && block.name === "Agent") {
                     const input = block.input as { description?: string; prompt?: string } | undefined;
@@ -124,7 +135,6 @@ async function handleCmd(
               }
 
               case "user": {
-                // User messages include tool_result blocks — detect Agent completions
                 const userMsg = message as {
                   message: { content: Array<{ type: string; tool_use_id?: string }> };
                 };
@@ -145,8 +155,14 @@ async function handleCmd(
                   subtype: string;
                   total_cost_usd: number;
                   result?: string;
+                  session_id?: string;
                 };
                 cost = resultMsg.total_cost_usd;
+
+                // Capture session ID from result too
+                if (resultMsg.session_id) {
+                  sessionMap.set(ws, resultMsg.session_id);
+                }
 
                 if (resultMsg.subtype === "success" && resultMsg.result && !streamedText) {
                   streamedText = resultMsg.result;
