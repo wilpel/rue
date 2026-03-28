@@ -2,13 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Send } from "lucide-react";
 import { useClient } from "../lib/context";
 
-interface Message {
-  id: string;
-  role: string;
-  content: string;
-  timestamp: number;
-  isStreaming?: boolean;
-}
+interface Message { id: string; role: string; content: string; timestamp: number; isStreaming?: boolean; }
 
 export function ChatPage() {
   const client = useClient();
@@ -18,98 +12,68 @@ export function ChatPage() {
   const endRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    client.history(20).then((r) => {
+    client.history(20).then(r => {
       setMessages(r.messages.filter(m => m.role !== "agent-event").map(m => ({
         id: m.id, role: m.role, content: m.content, timestamp: m.timestamp,
       })));
     }).catch(() => {});
   }, [client]);
 
-  useEffect(() => {
-    endRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+  useEffect(() => { endRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!input.trim() || sending) return;
-    const text = input;
-    setInput("");
-
+    const text = input; setInput("");
     const userMsg: Message = { id: `u-${Date.now()}`, role: "user", content: text, timestamp: Date.now() };
     const aId = `a-${Date.now()}`;
-    const assistantMsg: Message = { id: aId, role: "assistant", content: "", timestamp: Date.now(), isStreaming: true };
-    setMessages(prev => [...prev, userMsg, assistantMsg]);
-    setSending(true);
-
+    const aMsg: Message = { id: aId, role: "assistant", content: "", timestamp: Date.now(), isStreaming: true };
+    setMessages(p => [...p, userMsg, aMsg]); setSending(true);
     try {
-      const result = await client.ask(text, {
-        onStream: (chunk) => {
-          setMessages(prev => prev.map(m => m.id === aId ? { ...m, content: m.content + chunk } : m));
-        },
-      });
-      setMessages(prev => prev.map(m => m.id === aId ? { ...m, content: m.content || result.output, isStreaming: false } : m));
+      const result = await client.ask(text, { onStream: (chunk) => setMessages(p => p.map(m => m.id === aId ? { ...m, content: m.content + chunk } : m)) });
+      setMessages(p => p.map(m => m.id === aId ? { ...m, content: m.content || result.output, isStreaming: false } : m));
     } catch (err) {
-      setMessages(prev => prev.map(m => m.id === aId ? { ...m, content: `Error: ${err}`, isStreaming: false } : m));
-    } finally {
-      setSending(false);
-    }
+      setMessages(p => p.map(m => m.id === aId ? { ...m, content: `Error: ${err}`, isStreaming: false } : m));
+    } finally { setSending(false); }
   };
 
   return (
     <div className="h-screen flex flex-col">
-      <div className="border-b border-border-subtle px-6 py-3">
+      <div className="border-b border-glass-border px-6 py-3.5 glass">
         <h1 className="text-sm font-semibold text-text-secondary">Chat</h1>
       </div>
-
       <div className="flex-1 overflow-y-auto px-6 py-6">
         <div className="max-w-2xl mx-auto space-y-4">
           {messages.length === 0 && (
-            <div className="text-center py-24">
-              <div className="w-2 h-2 rounded-full bg-accent/40 mx-auto mb-4" />
-              <p className="text-text-muted text-sm">Start a conversation with Rue</p>
+            <div className="text-center py-24 animate-fade-up">
+              <div className="w-2.5 h-2.5 rounded-full bg-accent/30 animate-breathe mx-auto mb-4" />
+              <p className="text-text-muted text-sm">Start a conversation</p>
             </div>
           )}
-          {messages.map((msg) => (
-            <div
-              key={msg.id}
-              className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
-            >
+          {messages.map(msg => (
+            <div key={msg.id} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"} animate-fade-up`}>
               <div className={`max-w-[75%] ${
                 msg.role === "user"
-                  ? "bg-accent text-bg rounded-2xl rounded-br-md px-4 py-2.5"
+                  ? "bg-accent text-bg rounded-2xl rounded-br-md px-4 py-2.5 font-medium text-sm"
                   : msg.role === "system"
-                    ? "text-text-muted text-xs italic px-2 py-1"
-                    : "bg-surface border border-border rounded-2xl rounded-bl-md px-4 py-2.5"
+                    ? "text-text-muted text-xs italic"
+                    : "glass rounded-2xl rounded-bl-md px-4 py-3"
               }`}>
-                {msg.role === "assistant" && (
-                  <p className="text-[10px] font-semibold text-accent/50 uppercase tracking-wider mb-1.5">rue</p>
-                )}
-                <p className="text-sm leading-relaxed whitespace-pre-wrap">
-                  {msg.content || (msg.isStreaming ? "" : "")}
-                </p>
-                {msg.isStreaming && (
-                  <span className="inline-block w-1.5 h-4 bg-accent rounded-sm ml-0.5 animate-pulse-accent" />
-                )}
+                {msg.role === "assistant" && <p className="text-[10px] font-semibold text-accent/50 uppercase tracking-wider mb-1.5">rue</p>}
+                <p className="text-sm leading-relaxed whitespace-pre-wrap">{msg.content}</p>
+                {msg.isStreaming && <span className="inline-block w-1.5 h-3.5 bg-accent rounded-sm ml-0.5 animate-breathe" />}
               </div>
             </div>
           ))}
           <div ref={endRef} />
         </div>
       </div>
-
-      <form onSubmit={handleSubmit} className="border-t border-border-subtle p-4">
+      <form onSubmit={handleSubmit} className="border-t border-glass-border glass p-4">
         <div className="max-w-2xl mx-auto flex gap-3">
-          <input
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            placeholder="Type a message..."
-            className="flex-1 px-4 py-3 bg-surface rounded-xl border border-border text-text-primary placeholder-text-muted text-sm focus:outline-none focus:border-accent/30 transition-colors duration-150"
-          />
-          <button
-            type="submit"
-            disabled={sending || !input.trim()}
-            className="px-4 py-3 bg-accent hover:bg-accent-hover disabled:bg-surface-elevated disabled:text-text-muted text-bg font-medium rounded-xl transition-colors duration-150"
-          >
+          <input value={input} onChange={e => setInput(e.target.value)} placeholder="Type a message..."
+            className="flex-1 px-4 py-3 glass rounded-xl text-text-primary placeholder-text-muted text-sm focus:outline-none focus:ring-1 focus:ring-accent/20 transition-all" />
+          <button type="submit" disabled={sending || !input.trim()}
+            className="px-4 py-3 bg-accent hover:bg-accent-hover disabled:bg-glass disabled:text-text-muted text-bg font-medium rounded-xl transition-all duration-200">
             <Send size={16} />
           </button>
         </div>

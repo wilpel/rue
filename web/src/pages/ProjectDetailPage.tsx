@@ -4,11 +4,10 @@ import { ArrowLeft, Plus, User, Clock, LayoutGrid, FileText } from "lucide-react
 import { api, type ProjectDetail, type Task, type ProjectDoc } from "../lib/api";
 
 type Tab = "board" | "docs";
-
 const COLUMNS = [
-  { key: "todo", label: "Todo", dotClass: "bg-text-muted/40" },
-  { key: "in-progress", label: "In Progress", dotClass: "bg-accent" },
-  { key: "done", label: "Done", dotClass: "bg-success" },
+  { key: "todo", label: "Todo", dot: "bg-text-muted/30" },
+  { key: "in-progress", label: "In Progress", dot: "bg-accent" },
+  { key: "done", label: "Done", dot: "bg-success" },
 ] as const;
 
 export function ProjectDetailPage() {
@@ -24,53 +23,44 @@ export function ProjectDetailPage() {
     if (!name) return;
     Promise.all([api.project(name), api.projectDocs(name)])
       .then(([p, d]) => { setProject(p); setDocs(d); if (d.length > 0) setSelectedDoc(d[0].path); })
-      .catch((e) => setError(e.message))
+      .catch(e => setError(e.message))
       .finally(() => setLoading(false));
   }, [name]);
 
-  if (loading) return <div className="h-screen flex items-center justify-center"><div className="w-2 h-2 rounded-full bg-accent animate-pulse-accent" /></div>;
+  if (loading) return <div className="h-screen flex items-center justify-center"><div className="w-2.5 h-2.5 rounded-full bg-accent/40 animate-breathe" /></div>;
   if (error || !project) return (
     <div className="h-screen flex flex-col items-center justify-center gap-3">
-      <p className="text-error text-sm">{error ?? "Project not found"}</p>
-      <Link to="/projects" className="text-accent text-xs hover:text-accent-hover transition-colors duration-150">Back to projects</Link>
+      <p className="text-error text-sm">{error ?? "Not found"}</p>
+      <Link to="/projects" className="text-accent text-xs hover:text-accent-hover transition-colors">Back</Link>
     </div>
   );
 
   const tasksByStatus: Record<string, Task[]> = { todo: [], "in-progress": [], done: [] };
-  for (const t of project.tasks) {
-    const s = t.status ?? "todo";
-    if (s in tasksByStatus) tasksByStatus[s].push(t);
-    else tasksByStatus.todo.push(t);
-  }
-
+  for (const t of project.tasks) { const s = t.status ?? "todo"; if (s in tasksByStatus) tasksByStatus[s].push(t); else tasksByStatus.todo.push(t); }
   const activeDoc = docs.find(d => d.path === selectedDoc) ?? docs[0] ?? null;
 
   return (
     <div className="h-screen flex flex-col">
-      {/* Header */}
-      <div className="border-b border-border-subtle px-6 py-4">
+      <div className="border-b border-glass-border glass px-6 py-4">
         <div className="flex items-center gap-4">
-          <Link to="/projects" className="text-text-muted hover:text-text-primary transition-colors duration-150"><ArrowLeft size={18} /></Link>
+          <Link to="/projects" className="text-text-muted hover:text-text-primary transition-colors"><ArrowLeft size={18} /></Link>
           <div className="flex-1 min-w-0">
             <h1 className="text-sm font-semibold text-text-primary">{project.name}</h1>
             <p className="text-xs text-text-muted truncate">{project.description}</p>
           </div>
-          <span className="text-[10px] text-text-muted font-mono bg-surface-elevated px-2 py-1 rounded">max {project.maxAgents} agents</span>
+          <span className="text-[10px] text-text-muted font-mono glass px-2 py-1 rounded-lg">max {project.maxAgents}</span>
           {tab === "board" && (
-            <button className="flex items-center gap-1.5 px-3 py-1.5 bg-accent hover:bg-accent-hover text-bg text-xs font-semibold rounded-lg transition-colors duration-150">
+            <button className="flex items-center gap-1.5 px-3 py-1.5 bg-accent hover:bg-accent-hover text-bg text-xs font-semibold rounded-lg transition-colors">
               <Plus size={14} /> Add Task
             </button>
           )}
         </div>
         <div className="flex gap-1 mt-3">
           {(["board", "docs"] as Tab[]).map(t => (
-            <button
-              key={t}
-              onClick={() => setTab(t)}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors duration-150 ${
-                tab === t ? "bg-accent-muted text-accent" : "text-text-muted hover:text-text-secondary"
-              }`}
-            >
+            <button key={t} onClick={() => setTab(t)}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-200 ${
+                tab === t ? "bg-accent-glow text-accent" : "text-text-muted hover:text-text-secondary"
+              }`}>
               {t === "board" ? <LayoutGrid size={12} /> : <FileText size={12} />}
               {t === "board" ? "Board" : `Docs (${docs.length})`}
             </button>
@@ -78,28 +68,23 @@ export function ProjectDetailPage() {
         </div>
       </div>
 
-      {/* Board */}
       {tab === "board" && (
         <div className="flex-1 overflow-x-auto p-6">
           <div className="flex gap-5 min-h-full">
-            {COLUMNS.map(({ key, label, dotClass }) => (
+            {COLUMNS.map(({ key, label, dot }) => (
               <div key={key} className="flex-1 min-w-[260px]">
                 <div className="flex items-center gap-2 mb-4">
-                  <div className={`w-1.5 h-1.5 rounded-full ${dotClass}`} />
+                  <div className={`w-1.5 h-1.5 rounded-full ${dot}`} />
                   <h3 className="text-[11px] font-semibold text-text-muted uppercase tracking-[0.1em]">{label}</h3>
                   <span className="text-[10px] text-text-muted/50 ml-auto font-mono">{tasksByStatus[key].length}</span>
                 </div>
                 <div className="space-y-2.5">
                   {tasksByStatus[key].length === 0 ? (
-                    <div className="bg-surface rounded-xl border border-dashed border-border p-8 text-center">
-                      <p className="text-[11px] text-text-muted/40">No tasks</p>
-                    </div>
+                    <div className="glass rounded-2xl border-dashed p-8 text-center"><p className="text-[11px] text-text-muted/30">No tasks</p></div>
                   ) : tasksByStatus[key].map((task, i) => (
-                    <div key={task.filename ?? i} className="bg-surface rounded-xl border border-border p-4 hover:border-accent/20 transition-colors duration-150">
+                    <div key={task.filename ?? i} className="glass glass-hover rounded-2xl p-4 transition-all duration-200">
                       <h4 className="text-xs font-medium text-text-primary mb-1">{task.title}</h4>
-                      {task.description && (
-                        <p className="text-[11px] text-text-muted leading-relaxed mb-2.5 line-clamp-3">{task.description}</p>
-                      )}
+                      {task.description && <p className="text-[11px] text-text-muted leading-relaxed mb-2 line-clamp-3">{task.description}</p>}
                       <div className="flex flex-wrap gap-2">
                         {task.agent && <span className="flex items-center gap-1 text-[10px] text-accent font-mono"><User size={9} />{task.agent}</span>}
                         {task.started && <span className="flex items-center gap-1 text-[10px] text-text-muted font-mono"><Clock size={9} />{new Date(task.started).toLocaleDateString()}</span>}
@@ -113,36 +98,32 @@ export function ProjectDetailPage() {
         </div>
       )}
 
-      {/* Docs */}
       {tab === "docs" && (
         <div className="flex-1 flex overflow-hidden">
-          <div className="w-48 border-r border-border-subtle bg-bg overflow-y-auto p-2.5">
+          <div className="w-48 border-r border-glass-border bg-bg/50 overflow-y-auto p-2.5">
             {docs.map(doc => (
-              <button
-                key={doc.path}
-                onClick={() => setSelectedDoc(doc.path)}
-                className={`w-full text-left px-3 py-2 rounded-lg text-xs transition-colors duration-150 mb-0.5 ${
-                  selectedDoc === doc.path ? "bg-accent-muted text-accent" : "text-text-muted hover:bg-surface hover:text-text-secondary"
-                }`}
-              >
+              <button key={doc.path} onClick={() => setSelectedDoc(doc.path)}
+                className={`w-full text-left px-3 py-2 rounded-lg text-xs transition-all mb-0.5 ${
+                  selectedDoc === doc.path ? "bg-accent-glow text-accent" : "text-text-muted hover:bg-glass-hover hover:text-text-secondary"
+                }`}>
                 <div className="flex items-center gap-2"><FileText size={11} /><span className="truncate">{doc.name}</span></div>
               </button>
             ))}
           </div>
           <div className="flex-1 overflow-y-auto p-6">
             {activeDoc ? (
-              <div className="max-w-3xl">
+              <div className="max-w-3xl animate-fade-up">
                 <div className="flex items-center gap-2 mb-5">
-                  <FileText size={14} className="text-accent/60" />
+                  <FileText size={14} className="text-accent/50" />
                   <h2 className="text-xs font-semibold text-text-secondary">{activeDoc.name}</h2>
                   <span className="text-[10px] text-text-muted font-mono">{activeDoc.path}</span>
                 </div>
-                <div className="bg-surface rounded-xl border border-border p-6">
+                <div className="glass rounded-2xl p-6">
                   <pre className="whitespace-pre-wrap text-xs text-text-secondary font-mono leading-relaxed">{activeDoc.content}</pre>
                 </div>
               </div>
             ) : (
-              <div className="flex items-center justify-center h-full"><p className="text-text-muted/40 text-xs">Select a document</p></div>
+              <div className="flex items-center justify-center h-full"><p className="text-text-muted/30 text-xs">Select a document</p></div>
             )}
           </div>
         </div>
