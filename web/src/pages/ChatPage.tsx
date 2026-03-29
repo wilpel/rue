@@ -36,6 +36,15 @@ export function ChatPage() {
 
   return (
     <div className="h-full flex flex-col">
+      {/* Header */}
+      <div className="border-b border-line px-4 py-2.5 flex items-center justify-between">
+        <h1 className="text-sm font-medium text-secondary">Chat</h1>
+        <button onClick={async () => { await client.reset(); setMsgs([]); }}
+          className="text-[11px] text-muted hover:text-secondary transition-colors">
+          New conversation
+        </button>
+      </div>
+
       {/* Messages */}
       <div className="flex-1 overflow-y-auto">
         <div className="max-w-3xl mx-auto px-4 py-8">

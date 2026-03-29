@@ -246,28 +246,37 @@ export class TelegramBot {
       return;
     }
 
-    // Split on paragraph boundaries when possible
+    // Split intelligently
     const chunks: string[] = [];
     let remaining = text;
+
     while (remaining.length > 0) {
       if (remaining.length <= MAX_LEN) {
         chunks.push(remaining);
         break;
       }
-      // Find a good split point
-      let splitAt = remaining.lastIndexOf("\n\n", MAX_LEN);
-      if (splitAt === -1 || splitAt < MAX_LEN / 2) {
-        splitAt = remaining.lastIndexOf("\n", MAX_LEN);
+
+      // Try to split at paragraph boundary
+      let splitIdx = remaining.lastIndexOf("\n\n", MAX_LEN);
+
+      // If no paragraph break, try line boundary
+      if (splitIdx < MAX_LEN / 2) {
+        splitIdx = remaining.lastIndexOf("\n", MAX_LEN);
       }
-      if (splitAt === -1 || splitAt < MAX_LEN / 2) {
-        splitAt = MAX_LEN;
+
+      // Last resort: split at char limit
+      if (splitIdx < MAX_LEN / 4) {
+        splitIdx = MAX_LEN;
       }
-      chunks.push(remaining.slice(0, splitAt));
-      remaining = remaining.slice(splitAt).trimStart();
+
+      chunks.push(remaining.slice(0, splitIdx));
+      remaining = remaining.slice(splitIdx).trim();
     }
 
     for (const chunk of chunks) {
-      await ctx.reply(chunk);
+      if (chunk.trim()) {
+        await ctx.reply(chunk);
+      }
     }
   }
 }

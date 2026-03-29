@@ -497,7 +497,9 @@ export class DaemonServer {
         if (content.includes("status: in-progress")) {
           content = content.replace(/status:\s*\S+/, "status: todo");
           content = content.replace(/started:\s*\S+/, "started: null");
-          fs.writeFileSync(filePath, content);
+          const tmpPath = filePath + ".tmp";
+          fs.writeFileSync(tmpPath, content);
+          fs.renameSync(tmpPath, filePath);
           resetCount++;
         }
       }
@@ -642,7 +644,9 @@ ${projectPrompt ? "## Project-Specific Instructions\n\n" + projectPrompt : ""}`;
       let content = fs.readFileSync(taskFilePath, "utf-8");
       content = content.replace(/status:\s*\S+/, "status: in-progress");
       content = content.replace(/started:\s*\S+/, `started: ${new Date().toISOString()}`);
-      fs.writeFileSync(taskFilePath, content);
+      const tmpPath = taskFilePath + ".tmp";
+      fs.writeFileSync(tmpPath, content);
+      fs.renameSync(tmpPath, taskFilePath);
     }
 
     const agentId = `project-${projectName}-${Date.now()}`;
@@ -714,7 +718,9 @@ ${projectPrompt ? "## Project-Specific Instructions\n\n" + projectPrompt : ""}`;
         let content = fs.readFileSync(taskFilePath, "utf-8");
         content = content.replace(/status:\s*\S+/, "status: done");
         content = content.replace(/completed:\s*\S+/, `completed: ${new Date().toISOString()}`);
-        fs.writeFileSync(taskFilePath, content);
+        const tmpPath = taskFilePath + ".tmp";
+        fs.writeFileSync(tmpPath, content);
+        fs.renameSync(tmpPath, taskFilePath);
       }
 
       this.bus.emit("agent:completed", { id: agentId, result: output.slice(0, 200), cost: 0 });
@@ -735,7 +741,9 @@ ${projectPrompt ? "## Project-Specific Instructions\n\n" + projectPrompt : ""}`;
       if (fs.existsSync(taskFilePath)) {
         let content = fs.readFileSync(taskFilePath, "utf-8");
         content = content.replace(/status:\s*\S+/, "status: failed");
-        fs.writeFileSync(taskFilePath, content);
+        const tmpPath = taskFilePath + ".tmp";
+        fs.writeFileSync(tmpPath, content);
+        fs.renameSync(tmpPath, taskFilePath);
       }
 
       this.bus.emit("agent:failed", { id: `project-${projectName}`, error: errMsg, retryable: false });
