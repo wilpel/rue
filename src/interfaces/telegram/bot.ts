@@ -139,39 +139,63 @@ export class TelegramBot {
       // Include Telegram context so Rue can react to messages
       const prompt = `[Telegram message from chat_id=${chatId} message_id=${messageId}]\n${text}`;
 
-      const tryAsk = async (retry = false): Promise<string> => {
+      const tryAsk = async (retry = false): Promise<void> => {
         if (retry) this.disconnectClient(telegramId);
         const client = await this.getOrCreateClient(telegramId);
 
-        let response = "";
+        let buffer = "";
+        let sentAnything = false;
+        let flushTimer: NodeJS.Timeout | null = null;
+
         const typingInterval = setInterval(() => {
           ctx.sendChatAction("typing").catch(() => {});
         }, 4000);
 
+        const flush = async () => {
+          if (flushTimer) { clearTimeout(flushTimer); flushTimer = null; }
+          const toSend = buffer.trim();
+          if (toSend) {
+            buffer = "";
+            sentAnything = true;
+            await this.sendLongMessage(ctx, toSend).catch(() => {});
+          }
+        };
+
         try {
           const result = await client.ask(prompt, {
-            onStream: (chunk) => { response += chunk; },
+            onStream: (chunk) => {
+              buffer += chunk;
+              // Flush on double newline (paragraph break) or after accumulating text
+              if (buffer.includes("\n\n")) {
+                flush();
+              } else if (!flushTimer) {
+                // Flush after 1.5s pause in streaming
+                flushTimer = setTimeout(() => flush(), 1500);
+              }
+            },
           });
-          return result.output || response;
+
+          // Final flush of any remaining text
+          if (result.output && !sentAnything) {
+            buffer = result.output;
+          }
+          await flush();
+
+          if (!sentAnything) {
+            await ctx.reply("(no response)");
+          }
         } finally {
+          if (flushTimer) clearTimeout(flushTimer);
           clearInterval(typingInterval);
         }
       };
 
       try {
-        let response: string;
         try {
-          response = await tryAsk(false);
+          await tryAsk(false);
         } catch {
-          // First attempt failed — reconnect and retry once
           console.log(`[telegram] Retrying for user ${telegramId} after connection error`);
-          response = await tryAsk(true);
-        }
-
-        if (response) {
-          await this.sendLongMessage(ctx, response);
-        } else {
-          await ctx.reply("(no response)");
+          await tryAsk(true);
         }
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
