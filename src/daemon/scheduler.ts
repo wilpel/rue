@@ -154,11 +154,13 @@ export class JobScheduler {
     return dueJobs.length;
   }
 
-  /** Execute a single due job. */
+  /** Execute a single due job by spawning an agent to handle it. */
   private executeJob(job: Job, now: number): void {
     const db = this.ensureDb();
 
-    // Create a push message so the daemon picks up the task
+    console.log(`[scheduler] Firing job "${job.name}": ${job.task}`);
+
+    // Create a push message for the record
     this.messages.append({
       role: "push",
       content: `[Scheduled Job: ${job.name}] ${job.task}`,
@@ -172,6 +174,9 @@ export class JobScheduler {
       timestamp: now,
       metadata: { jobId: job.id, source: "scheduler" },
     });
+
+    // Spawn an agent to actually execute the task
+    this.spawnJobAgent(job);
 
     if (isRecurring(job.schedule)) {
       // Compute next run from now (not from the scheduled time, to avoid catch-up storms)
@@ -203,5 +208,48 @@ export class JobScheduler {
       cnt: number;
     };
     return row.cnt;
+  }
+
+  /** Spawn a lightweight agent to execute a scheduled job's task. */
+  private async spawnJobAgent(job: Job): Promise<void> {
+    try {
+      const { query } = await import("@anthropic-ai/claude-agent-sdk");
+      const { fileURLToPath } = await import("node:url");
+      const pathMod = await import("node:path");
+      const dirname = pathMod.dirname(fileURLToPath(import.meta.url));
+      const projectRoot = pathMod.resolve(dirname, "..", "..");
+
+      const q = query({
+        prompt: `Execute this scheduled task now:\n\n${job.task}\n\nDo it and confirm briefly when done.`,
+        options: {
+          cwd: projectRoot,
+          systemPrompt: `You are Rue executing a scheduled job called "${job.name}". Do exactly what the task says. Use the available tools (Bash, Read, Write, etc.) to complete it. Be quick and direct. If the task says to send a Telegram message, use: node --import tsx/esm skills/telegram/run.ts send --message "..."`,
+          tools: ["Read", "Write", "Edit", "Bash", "Glob", "Grep", "WebSearch", "WebFetch"],
+          allowedTools: ["Read", "Write", "Edit", "Bash", "Glob", "Grep", "WebSearch", "WebFetch"],
+          permissionMode: "bypassPermissions" as const,
+          allowDangerouslySkipPermissions: true,
+          maxTurns: 10,
+          settingSources: [],
+        },
+      });
+
+      let output = "";
+      for await (const message of q) {
+        if (message.type === "assistant") {
+          const content = (message as { message: { content: Array<{ type: string; text?: string }> } }).message.content;
+          for (const block of content) {
+            if (block.type === "text" && block.text) output += block.text;
+          }
+        }
+        if (message.type === "result") {
+          const r = message as { subtype: string; result?: string };
+          if (r.subtype === "success" && r.result) output = r.result;
+        }
+      }
+
+      console.log(`[scheduler] Job "${job.name}" completed: ${output.slice(0, 100)}`);
+    } catch (err) {
+      console.error(`[scheduler] Job "${job.name}" failed: ${err instanceof Error ? err.message : err}`);
+    }
   }
 }
