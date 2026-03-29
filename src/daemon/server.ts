@@ -303,6 +303,27 @@ export class DaemonServer {
         return;
       }
 
+      // POST /api/projects
+      if (pathname === "/api/projects" && req.method === "POST") {
+        let body = "";
+        req.on("data", (chunk: Buffer) => { body += chunk.toString(); });
+        req.on("end", () => {
+          try {
+            const { name, description, maxAgents } = JSON.parse(body);
+            if (!name) { json({ error: "name required" }, 400); return; }
+            const { execSync } = require("node:child_process");
+            const args = [`--name "${name.replace(/"/g, '\\"')}"`];
+            if (description) args.push(`--description "${description.replace(/"/g, '\\"')}"`);
+            if (maxAgents) args.push(`--max-agents ${maxAgents}`);
+            execSync(`node --import tsx/esm skills/projects/run.ts create ${args.join(" ")}`, { cwd: PROJECT_ROOT, encoding: "utf-8" });
+            json({ ok: true });
+          } catch (err) {
+            json({ error: err instanceof Error ? err.message : "Failed to create project" }, 500);
+          }
+        });
+        return;
+      }
+
       // POST /api/projects/:name/tasks
       const addTaskMatch = pathname.match(/^\/api\/projects\/([^/]+)\/tasks$/);
       if (addTaskMatch && req.method === "POST") {

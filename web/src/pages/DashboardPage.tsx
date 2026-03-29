@@ -1,19 +1,23 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { Bot, FolderKanban, Activity, MessageCircle, Clock, ArrowRight, Zap } from "lucide-react";
+import { Bot, FolderKanban, Activity, ArrowRight, Zap } from "lucide-react";
 
 interface DashboardData {
   agents: Array<{ id: string; task: string; state: string; lane: string }>;
   projects: Array<{ name: string; description: string; status: string; taskCounts: { todo: number; "in-progress": number; done: number } }>;
   recentMessages: Array<{ id: string; role: string; content: string; timestamp: number }>;
-  events: Array<{ seq: number; ts: number; channel: string; payload: unknown }>;
+  agentActivity: Array<{ id: number; agentId: string; projectName: string | null; taskTitle: string | null; status: string; content: string | null; createdAt: number }>;
 }
 
 export function DashboardPage() {
   const [data, setData] = useState<DashboardData | null>(null);
+  const [agentActivity, setAgentActivity] = useState<Array<{id: number; agentId: string; projectName: string | null; taskTitle: string | null; status: string; content: string | null; createdAt: number}>>([]);
 
   useEffect(() => {
-    const load = () => fetch("/api/dashboard").then(r => r.json()).then(setData).catch(() => {});
+    const load = () => {
+      fetch("/api/dashboard").then(r => r.json()).then(setData).catch(() => {});
+      fetch("/api/agent-activity").then(r => r.json()).then(activity => setAgentActivity(activity)).catch(() => {});
+    };
     load();
     const i = setInterval(load, 5000);
     return () => clearInterval(i);
@@ -84,19 +88,19 @@ export function DashboardPage() {
             </div>
           </div>
 
-          {/* Event log */}
+          {/* Agent activity */}
           <div className="col-span-1">
-            <SectionHeader title="Event log" />
+            <SectionHeader title="Agent activity" />
             <div className="space-y-0.5 max-h-[500px] overflow-y-auto">
-              {(() => {
-                const hidden = new Set(["agent:progress", "agent:completed", "agent:spawned", "interface:stream", "system:health"]);
-                const visible = data.events.filter(e => !hidden.has(e.channel));
-                return visible.length === 0 ? (
-                  <Empty>No events</Empty>
-                ) : visible.map(evt => (
-                  <EventRow key={evt.seq} event={evt} />
-                ));
-              })()}
+              {agentActivity.length === 0 ? (
+                <Empty>No activity</Empty>
+              ) : agentActivity.slice(-20).map(a => (
+                <div key={a.id} className="flex items-start gap-2 py-1.5 px-2 rounded hover:bg-surface transition-colors">
+                  <span className="text-[10px] text-muted shrink-0 mt-0.5 font-mono w-10">{formatTime(a.createdAt)}</span>
+                  <span className={`text-[10px] font-mono shrink-0 ${a.status === "completed" ? "text-green" : a.status === "failed" ? "text-red" : "text-accent"}`}>{a.status}</span>
+                  <span className="text-[10px] text-muted truncate">{a.taskTitle || a.projectName || a.agentId.slice(0, 16)}</span>
+                </div>
+              ))}
             </div>
           </div>
         </div>
@@ -150,25 +154,6 @@ function Empty({ children }: { children: string }) {
   return <div className="p-4 rounded-lg border border-dashed border-line text-center"><p className="text-[11px] text-muted/40">{children}</p></div>;
 }
 
-function EventRow({ event }: { event: { seq: number; ts: number; channel: string; payload: unknown } }) {
-  const channel = event.channel;
-  const isAgent = channel.startsWith("agent:");
-  const isTask = channel.startsWith("task:");
-  const isSystem = channel.startsWith("system:");
-  const isMessage = channel.startsWith("message:");
-
-  const color = isAgent ? "text-accent" : isTask ? "text-green" : isSystem ? "text-secondary" : isMessage ? "text-blue-400" : "text-muted";
-  const payload = event.payload as Record<string, unknown> | null;
-  const detail = payload?.task ?? payload?.result ?? payload?.reason ?? payload?.content ?? "";
-
-  return (
-    <div className="flex items-start gap-2 py-1.5 px-2 rounded hover:bg-surface transition-colors">
-      <span className="text-[10px] text-muted shrink-0 mt-0.5 font-mono w-10">{formatTime(event.ts)}</span>
-      <span className={`text-[10px] font-mono shrink-0 ${color}`}>{channel}</span>
-      {detail && <span className="text-[10px] text-muted truncate">{String(detail).slice(0, 60)}</span>}
-    </div>
-  );
-}
 
 function formatTime(ts: number): string {
   const d = new Date(ts);

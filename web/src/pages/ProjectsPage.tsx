@@ -8,6 +8,9 @@ export function ProjectsPage() {
   const navigate = useNavigate();
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
   const [loading, setLoading] = useState(true);
+  const [showCreate, setShowCreate] = useState(false);
+  const [newName, setNewName] = useState("");
+  const [newDesc, setNewDesc] = useState("");
 
   useEffect(() => { api.projects().then(setProjects).catch(() => {}).finally(() => setLoading(false)); }, []);
 
@@ -19,10 +22,27 @@ export function ProjectsPage() {
       <div className={`${selected ? "w-72" : "flex-1 max-w-2xl mx-auto"} shrink-0 border-r border-line flex flex-col transition-all`}>
         <div className="h-12 flex items-center justify-between px-4 border-b border-line shrink-0">
           <h1 className="text-sm font-semibold text-text">Projects</h1>
-          <button className="flex items-center gap-1 px-2.5 py-1 bg-accent text-bg text-[11px] font-semibold rounded-md hover:brightness-110 transition-all">
+          <button onClick={() => setShowCreate(!showCreate)} className="flex items-center gap-1 px-2.5 py-1 bg-accent text-bg text-[11px] font-semibold rounded-md hover:brightness-110 transition-all">
             <Plus size={12} /> New
           </button>
         </div>
+        {showCreate && (
+          <div className="p-3 border-b border-line space-y-2">
+            <input value={newName} onChange={e => setNewName(e.target.value)} placeholder="Project name..."
+              className="w-full h-9 px-3 bg-bg border border-line rounded-lg text-text text-sm placeholder:text-muted focus:outline-none focus:border-accent/30" />
+            <input value={newDesc} onChange={e => setNewDesc(e.target.value)} placeholder="Description..."
+              className="w-full h-9 px-3 bg-bg border border-line rounded-lg text-text text-sm placeholder:text-muted focus:outline-none focus:border-accent/30" />
+            <div className="flex gap-2">
+              <button onClick={async () => {
+                if (!newName.trim()) return;
+                await fetch('/api/projects', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({name: newName, description: newDesc}) });
+                setNewName(""); setNewDesc(""); setShowCreate(false);
+                api.projects().then(setProjects).catch(() => {});
+              }} className="h-8 px-3 bg-accent text-bg text-xs font-semibold rounded-lg hover:brightness-110">Create</button>
+              <button onClick={() => { setShowCreate(false); setNewName(""); setNewDesc(""); }} className="h-8 px-3 text-muted text-xs hover:text-secondary">Cancel</button>
+            </div>
+          </div>
+        )}
         <div className="flex-1 overflow-y-auto p-2">
           {loading ? <p className="text-muted text-xs text-center mt-8">Loading...</p> : projects.length === 0 ? (
             <div className="text-center mt-16">
