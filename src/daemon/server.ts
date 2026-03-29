@@ -618,6 +618,7 @@ ${projectPrompt ? "## Project-Specific Instructions\n\n" + projectPrompt : ""}`;
         options: {
           cwd,
           systemPrompt: agentsPrompt,
+          model: "sonnet",  // Use standard context to avoid rate limits
           tools: [
             "Read", "Write", "Edit", "Bash", "Glob", "Grep",
             "WebSearch", "WebFetch", "Agent",

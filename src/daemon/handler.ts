@@ -70,6 +70,7 @@ async function handleCmd(
             options: {
               cwd: workdir,
               systemPrompt,
+              model: "sonnet",  // Use standard context (not 1M) to avoid rate limits
               tools: ["Read", "Write", "Edit", "Bash", "Glob", "Grep", "WebSearch", "WebFetch", "Agent"],
               allowedTools: ["Read", "Write", "Edit", "Bash", "Glob", "Grep", "WebSearch", "WebFetch", "Agent"],
               permissionMode: "bypassPermissions",
@@ -163,22 +164,56 @@ async function handleCmd(
           return { allText, cost };
         };
 
+        const MAX_RETRIES = 5;
+        const isRateLimit = (err: unknown): boolean => {
+          const msg = err instanceof Error ? err.message : String(err);
+          return msg.toLowerCase().includes("rate limit") || msg.includes("429") || msg.includes("overloaded");
+        };
+
+        const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
+
         try {
-          let result: { allText: string; cost: number };
-          try {
-            // Try with session resume
-            result = await runQuery(existingSessionId);
-          } catch (resumeErr) {
-            // Resume failed — clear session and retry fresh
-            console.error(`[rue] Session resume failed, starting fresh: ${resumeErr instanceof Error ? resumeErr.message : resumeErr}`);
-            sessionMap.delete(ws);
-            lastSessionId = undefined;
-            result = await runQuery(undefined);
+          let result: { allText: string; cost: number } | null = null;
+          let lastError: unknown = null;
+
+          for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+            try {
+              const resumeId = attempt === 0 ? existingSessionId : undefined;
+              if (attempt > 0) {
+                // Clear session on retry
+                sessionMap.delete(ws);
+                lastSessionId = undefined;
+              }
+              result = await runQuery(resumeId);
+              break; // success
+            } catch (err) {
+              lastError = err;
+              const errMsg = err instanceof Error ? err.message : String(err);
+
+              if (isRateLimit(err) && attempt < MAX_RETRIES) {
+                const delay = Math.min(5000 * Math.pow(2, attempt), 60000); // 5s, 10s, 20s, 40s, 60s
+                console.log(`[rue] Rate limited (attempt ${attempt + 1}/${MAX_RETRIES + 1}), retrying in ${delay / 1000}s...`);
+                send({ type: "stream", agentId: "main", chunk: attempt === 0 ? "One moment..." : "" });
+                await sleep(delay);
+              } else if (attempt === 0 && existingSessionId) {
+                // First attempt with resume failed (not rate limit) — retry fresh
+                console.error(`[rue] Session resume failed: ${errMsg}. Retrying fresh...`);
+              } else {
+                break; // non-retryable error
+              }
+            }
           }
 
-          deps.messages.append({ role: "assistant", content: result.allText });
-          deps.bus.emit("message:created", { id: "", role: "assistant", content: result.allText, timestamp: Date.now() });
-          send({ type: "result", id: frame.id, data: { output: result.allText, cost: result.cost } });
+          if (result) {
+            deps.messages.append({ role: "assistant", content: result.allText });
+            deps.bus.emit("message:created", { id: "", role: "assistant", content: result.allText, timestamp: Date.now() });
+            send({ type: "result", id: frame.id, data: { output: result.allText, cost: result.cost } });
+          } else {
+            const errMsg = lastError instanceof Error ? lastError.message : String(lastError);
+            console.error(`[rue] All retries failed: ${errMsg}`);
+            send({ type: "stream", agentId: "main", chunk: "Sorry, I'm having trouble responding right now. Try again in a moment." });
+            send({ type: "result", id: frame.id, data: { output: "Error: " + errMsg, cost: 0 } });
+          }
         } catch (sdkError) {
           const message = sdkError instanceof Error ? sdkError.message : String(sdkError);
           console.error(`[rue] SDK error: ${message}`);
