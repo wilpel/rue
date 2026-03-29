@@ -72,6 +72,19 @@ export const triggers = sqliteTable("triggers", {
   fireCount: integer("fire_count").notNull().default(0),
 });
 
+// ── Agent Activity Logs ─────────────────────────────────────
+
+export const agentLogs = sqliteTable("agent_logs", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  agentId: text("agent_id").notNull(),
+  projectName: text("project_name"),
+  taskId: integer("task_id"),
+  taskTitle: text("task_title"),
+  status: text("status").notNull(), // started, output, completed, failed
+  content: text("content"),         // latest output or result summary
+  createdAt: integer("created_at").notNull(),
+});
+
 // ── Semantic Memory ─────────────────────────────────────────
 
 export const facts = sqliteTable("facts", {

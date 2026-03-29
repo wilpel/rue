@@ -121,39 +121,22 @@ export class ContextAssembler {
     const projectsDir = path.join(os.homedir(), ".rue", "workspace", "projects");
     if (!fs.existsSync(projectsDir)) return null;
 
-    const running: Array<{ project: string; task: string; started: string }> = [];
-
+    const running: Array<{ project: string; task: string }> = [];
     const projDirs = fs.readdirSync(projectsDir, { withFileTypes: true }).filter(d => d.isDirectory());
     for (const projDir of projDirs) {
       const tasksDir = path.join(projectsDir, projDir.name, "tasks");
       if (!fs.existsSync(tasksDir)) continue;
-
-      const files = fs.readdirSync(tasksDir).filter(f => f.endsWith(".md"));
-      for (const file of files) {
+      for (const file of fs.readdirSync(tasksDir).filter(f => f.endsWith(".md"))) {
         const content = fs.readFileSync(path.join(tasksDir, file), "utf-8");
         if (!content.includes("status: in-progress")) continue;
-
         const titleMatch = content.match(/^#\s+(.+)$/m);
-        const startedMatch = content.match(/started:\s*(\S+)/);
-        running.push({
-          project: projDir.name,
-          task: titleMatch?.[1] ?? file,
-          started: startedMatch?.[1] ?? "unknown",
-        });
+        running.push({ project: projDir.name, task: titleMatch?.[1] ?? file });
       }
     }
 
     if (running.length === 0) return null;
-
-    const lines = [
-      "## Running Project Agents",
-      `${running.length} agent(s) currently working:\n`,
-    ];
-
-    for (const r of running) {
-      lines.push(`- **${r.project}**: ${r.task} (started: ${r.started})`);
-    }
-
+    const lines = ["## Running Project Agents", `${running.length} agent(s) working:\n`];
+    for (const r of running) lines.push(`- **${r.project}**: ${r.task}`);
     return lines.join("\n");
   }
 }

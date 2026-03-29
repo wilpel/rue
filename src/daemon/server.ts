@@ -202,6 +202,14 @@ export class DaemonServer {
         return;
       }
 
+      // GET /api/agent-activity
+      if (pathname === "/api/agent-activity" && req.method === "GET") {
+        import(/* @vite-ignore */ "../../lib/db/helpers" + ".js").then(({ getRecentAgentActivity }) => {
+          json(getRecentAgentActivity(30));
+        }).catch(() => json([]));
+        return;
+      }
+
       // GET /api/projects/:name/docs
       const docsMatch = pathname.match(/^\/api\/projects\/([^/]+)\/docs$/);
       if (docsMatch && req.method === "GET") {
@@ -574,12 +582,19 @@ ${projectPrompt ? "## Project-Specific Instructions\n\n" + projectPrompt : ""}`;
       fs.writeFileSync(taskFilePath, content);
     }
 
+    const agentId = `project-${projectName}-${Date.now()}`;
+
+    // Log agent start
+    const logActivity = async (status: string, content: string) => {
+      try {
+        const { logAgentActivity } = await import(/* @vite-ignore */ "../../lib/db/helpers" + ".js");
+        logAgentActivity(agentId, status, content, { projectName, taskTitle: taskDescription });
+      } catch { /* db not available yet */ }
+    };
+
     // Emit agent spawned event
-    this.bus.emit("agent:spawned", {
-      id: `project-${projectName}-${Date.now()}`,
-      task: taskDescription,
-      lane: "sub",
-    });
+    this.bus.emit("agent:spawned", { id: agentId, task: taskDescription, lane: "sub" });
+    await logActivity("started", `Working on: ${taskDescription}`);
 
     // Spawn the agent via Claude SDK
     try {
@@ -608,11 +623,17 @@ ${projectPrompt ? "## Project-Specific Instructions\n\n" + projectPrompt : ""}`;
       });
 
       let output = "";
+      let lastLoggedOutput = "";
       for await (const message of q) {
         if (message.type === "assistant") {
           const content = (message as { message: { content: Array<{ type: string; text?: string }> } }).message.content;
           for (const block of content) {
             if (block.type === "text" && block.text) output += block.text;
+          }
+          // Log periodic output updates (every new assistant message)
+          if (output !== lastLoggedOutput) {
+            await logActivity("output", output.slice(-500));
+            lastLoggedOutput = output;
           }
         }
         if (message.type === "result") {
@@ -631,11 +652,8 @@ ${projectPrompt ? "## Project-Specific Instructions\n\n" + projectPrompt : ""}`;
         fs.writeFileSync(taskFilePath, content);
       }
 
-      this.bus.emit("agent:completed", {
-        id: `project-${projectName}-${Date.now()}`,
-        result: output.slice(0, 200),
-        cost: 0,
-      });
+      this.bus.emit("agent:completed", { id: agentId, result: output.slice(0, 200), cost: 0 });
+      await logActivity("completed", output.slice(0, 1000));
 
       // Persist result as a push message
       this.messages.append({
@@ -654,11 +672,8 @@ ${projectPrompt ? "## Project-Specific Instructions\n\n" + projectPrompt : ""}`;
         fs.writeFileSync(taskFilePath, content);
       }
 
-      this.bus.emit("agent:failed", {
-        id: `project-${projectName}`,
-        error: errMsg,
-        retryable: false,
-      });
+      this.bus.emit("agent:failed", { id: `project-${projectName}`, error: errMsg, retryable: false });
+      await logActivity("failed", errMsg);
     }
   }
 }

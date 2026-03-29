@@ -100,6 +100,19 @@ export function getDb() {
       created_at INTEGER NOT NULL,
       updated_at INTEGER NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS agent_logs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      agent_id TEXT NOT NULL,
+      project_name TEXT,
+      task_id INTEGER,
+      task_title TEXT,
+      status TEXT NOT NULL,
+      content TEXT,
+      created_at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_agent_logs_agent ON agent_logs(agent_id);
+    CREATE INDEX IF NOT EXISTS idx_agent_logs_created ON agent_logs(created_at);
   `);
 
   return _db;

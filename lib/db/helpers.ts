@@ -2,7 +2,7 @@
  * Shared helpers for skills and daemon to interact with the DB.
  * Import from "../../lib/db/helpers.js" in skills or "../../../lib/db/helpers.js" in src.
  */
-import { getDb, messages, projects, tasks, events, scheduledJobs, triggers, facts, eq, desc, and, sql } from "./index.js";
+import { getDb, messages, projects, tasks, events, scheduledJobs, triggers, facts, agentLogs, eq, desc, and, sql } from "./index.js";
 import { nanoid } from "nanoid";
 
 // ── Messages ────────────────────────────────────────────────
@@ -197,4 +197,34 @@ export function searchFacts(query: string, limit = 10) {
     .filter(r => r.score > 0)
     .sort((a, b) => b.score - a.score)
     .slice(0, limit);
+}
+
+// ── Agent Logs ──────────────────────────────────────────────
+
+export function logAgentActivity(agentId: string, status: string, content: string, opts?: { projectName?: string; taskId?: number; taskTitle?: string }) {
+  const db = getDb();
+  db.insert(agentLogs).values({
+    agentId,
+    projectName: opts?.projectName ?? null,
+    taskId: opts?.taskId ?? null,
+    taskTitle: opts?.taskTitle ?? null,
+    status,
+    content,
+    createdAt: Date.now(),
+  }).run();
+}
+
+export function getAgentLogs(agentId: string, limit = 10) {
+  const db = getDb();
+  return db.select().from(agentLogs).where(eq(agentLogs.agentId, agentId)).orderBy(desc(agentLogs.createdAt)).limit(limit).all().reverse();
+}
+
+export function getRecentAgentActivity(limit = 20) {
+  const db = getDb();
+  return db.select().from(agentLogs).orderBy(desc(agentLogs.createdAt)).limit(limit).all().reverse();
+}
+
+export function getActiveAgentLogs() {
+  const db = getDb();
+  return db.select().from(agentLogs).where(eq(agentLogs.status, "started")).all();
 }
