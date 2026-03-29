@@ -88,11 +88,15 @@ export function DashboardPage() {
           <div className="col-span-1">
             <SectionHeader title="Event log" />
             <div className="space-y-0.5 max-h-[500px] overflow-y-auto">
-              {data.events.length === 0 ? (
-                <Empty>No events</Empty>
-              ) : data.events.map(evt => (
-                <EventRow key={evt.seq} event={evt} />
-              ))}
+              {(() => {
+                const hidden = new Set(["agent:progress", "agent:completed", "agent:spawned", "interface:stream", "system:health"]);
+                const visible = data.events.filter(e => !hidden.has(e.channel));
+                return visible.length === 0 ? (
+                  <Empty>No events</Empty>
+                ) : visible.map(evt => (
+                  <EventRow key={evt.seq} event={evt} />
+                ));
+              })()}
             </div>
           </div>
         </div>
