@@ -19,6 +19,7 @@ import * as os from "node:os";
 import { fileURLToPath } from "node:url";
 import { TelegramBot } from "../interfaces/telegram/bot.js";
 import { TelegramStore } from "../interfaces/telegram/store.js";
+import { JobScheduler } from "./scheduler.js";
 
 // Resolve the rue-bot project root (where SYSTEM.md and skills/ live)
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -44,6 +45,7 @@ export class DaemonServer {
   private userModel: UserModel;
   private assembler: ContextAssembler;
   private telegramBot: TelegramBot | null = null;
+  private scheduler: JobScheduler;
 
   constructor(private readonly config: DaemonServerConfig) {
     this.bus = new EventBus();
@@ -66,6 +68,10 @@ export class DaemonServer {
       workdir: process.cwd(),
       defaultTimeout: 300_000,
     });
+    this.scheduler = new JobScheduler(
+      { schedulesDir: path.join(config.dataDir, "schedules") },
+      { bus: this.bus, messages: this.messages },
+    );
   }
 
   async start(): Promise<void> {
@@ -106,6 +112,9 @@ export class DaemonServer {
     // Watch for task-added events and auto-spawn agents
     this.startTaskWatcher();
 
+    // Start job scheduler to poll for due scheduled jobs
+    this.scheduler.start();
+
     // Start Telegram bot if configured
     await this.startTelegramBot();
 
@@ -118,6 +127,7 @@ export class DaemonServer {
   async stop(): Promise<void> {
     this.bus.emit("system:shutdown", { reason: "shutdown requested" });
     if (this._taskWatcher) clearInterval(this._taskWatcher);
+    this.scheduler.stop();
     if (this.telegramBot) await this.telegramBot.stop();
     this.supervisor.shutdown();
     this.semantic.close();
