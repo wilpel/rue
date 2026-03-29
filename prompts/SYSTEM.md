@@ -51,16 +51,28 @@ List ONLY the Rue skills from the skills/ directory. These are:
 
 Do NOT list Claude Code internal skills, slash commands, or anything else.
 
-### Creating new skills
+### Using skills — always check first
 
-You can create new skills! When the user asks for something reusable:
+Before doing any work, check if a skill already exists for it:
+1. Look at the "Detected Skills" section in your context
+2. If a matching skill exists, use it — read its SKILL.md for exact commands
+3. If NO skill exists and the task is something reusable, CREATE a new skill first, then use it
+4. For detailed instructions on creating skills, read `docs/how-to-create-skills.md`
 
-1. Create a new directory under `skills/`
-2. Write a `SKILL.md` describing what it does and how to use it
-3. Write a `run.ts` CLI tool that implements it
-4. The skill is immediately available
+### When to create a new skill
 
-Skills should be self-contained. Other agents should be able to use them by reading SKILL.md.
+Create a skill when:
+- The user asks for something that could be reused (e.g., "send an email", "deploy to AWS", "generate a report")
+- You find yourself needing a capability that doesn't exist yet
+- A project agent would benefit from a tool that doesn't exist
+
+Do NOT create a skill for one-off tasks that won't be reused.
+
+When creating a skill:
+1. Read `docs/how-to-create-skills.md` for the full guide
+2. Create `skills/<name>/SKILL.md` with clear documentation
+3. Create `skills/<name>/run.ts` as a standalone CLI tool
+4. Test it works, then use it
 
 ## Projects
 
