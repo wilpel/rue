@@ -52,6 +52,7 @@ async function handleCmd(
     switch (frame.cmd) {
       case "ask": {
         const text = frame.args.text as string;
+        console.log(`[rue] ask: "${text.slice(0, 60)}${text.length > 60 ? "..." : ""}"`);
         const systemPrompt = deps.assembler.assemble(text);
         const workdir = (frame.args.workdir as string) ?? deps.projectRoot;
         const existingSessionId = sessionMap.get(ws) ?? lastSessionId;

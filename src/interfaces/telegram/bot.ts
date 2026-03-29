@@ -133,7 +133,8 @@ export class TelegramBot {
       // Show typing indicator
       await ctx.sendChatAction("typing");
 
-      try {
+      const tryAsk = async (retry = false): Promise<string> => {
+        if (retry) this.disconnectClient(telegramId);
         const client = await this.getOrCreateClient(telegramId);
 
         let response = "";
@@ -143,29 +144,33 @@ export class TelegramBot {
 
         try {
           const result = await client.ask(text, {
-            onStream: (chunk) => {
-              response += chunk;
-            },
+            onStream: (chunk) => { response += chunk; },
           });
-          response = result.output || response;
+          return result.output || response;
         } finally {
           clearInterval(typingInterval);
         }
+      };
+
+      try {
+        let response: string;
+        try {
+          response = await tryAsk(false);
+        } catch {
+          // First attempt failed — reconnect and retry once
+          console.log(`[telegram] Retrying for user ${telegramId} after connection error`);
+          response = await tryAsk(true);
+        }
 
         if (response) {
-          // Telegram has a 4096 char limit per message
           await this.sendLongMessage(ctx, response);
         } else {
           await ctx.reply("(no response)");
         }
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
-        if (msg.includes("timed out")) {
-          await ctx.reply("Request timed out. The daemon might be busy.");
-        } else {
-          await ctx.reply("Error connecting to Rue daemon. Is it running?");
-        }
-        // Disconnect stale client so next message reconnects
+        console.error(`[telegram] Error for user ${telegramId}: ${msg}`);
+        await ctx.reply("Something went wrong. Try again in a moment.").catch(() => {});
         this.disconnectClient(telegramId);
       }
     });

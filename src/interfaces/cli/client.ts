@@ -26,6 +26,14 @@ export class DaemonClient {
       this.ws = new WebSocket(this.url);
       this.ws.on("open", () => resolve());
       this.ws.on("error", (err) => reject(err));
+      this.ws.on("close", () => {
+        // Reject all pending requests on disconnect
+        for (const [, req] of this.pending) {
+          req.reject(new Error("WebSocket disconnected"));
+        }
+        this.pending.clear();
+        this.ws = null;
+      });
       this.ws.on("message", (data) => {
         const frame = JSON.parse(data.toString()) as DaemonFrame;
         this.handleFrame(frame);
@@ -35,6 +43,7 @@ export class DaemonClient {
 
   disconnect(): void {
     this.ws?.close();
+    this.ws = null;
     this.ws = null;
   }
 
