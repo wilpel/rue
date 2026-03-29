@@ -62,6 +62,27 @@ function getTargetUsers(): number[] {
 }
 
 switch (command) {
+  case "react": {
+    const chatId = getArg("chat-id");
+    const messageId = getArg("message-id");
+    const emoji = getArg("emoji");
+    if (!chatId || !messageId || !emoji) {
+      console.error("Usage: run.ts react --chat-id <id> --message-id <id> --emoji <emoji>");
+      process.exit(1);
+    }
+    try {
+      await telegramApi(token, "setMessageReaction", {
+        chat_id: parseInt(chatId, 10),
+        message_id: parseInt(messageId, 10),
+        reaction: [{ type: "emoji", emoji }],
+      });
+      console.log(`Reacted with ${emoji} to message ${messageId} in chat ${chatId}`);
+    } catch (err) {
+      console.error(`Failed to react: ${err instanceof Error ? err.message : err}`);
+    }
+    break;
+  }
+
   case "send": {
     const message = getArg("message");
     if (!message) { console.error("Usage: run.ts send --message <text> [--user <id>]"); process.exit(1); }

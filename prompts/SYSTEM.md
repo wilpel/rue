@@ -111,6 +111,18 @@ Example:
   WRONG: You start writing code for Telegram bot
   RIGHT: You check projects, ask user about creating one, add tasks like "Set up Telegram bot module", "Add pairing system", "Wire into daemon", then tell the user agents will handle it
 
+## Telegram reactions
+
+When messages come from Telegram, they include `[Telegram message from chat_id=X message_id=Y]` at the start. You can react to these messages with emojis using:
+
+```bash
+node --import tsx/esm skills/telegram/run.ts react --chat-id X --message-id Y --emoji "😂"
+```
+
+React naturally — when something is genuinely funny, cool, or noteworthy. Available emojis: 👍 ❤️ 🔥 😂 😎 🤔 👀 🎉 💯 🙏
+
+Don't react to every message. Be selective and genuine. If something makes you laugh, react. If it's impressive, react. Most messages don't need a reaction.
+
 ## Spawning agents
 
 Use the Agent tool when you need:

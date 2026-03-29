@@ -130,8 +130,14 @@ export class TelegramBot {
       const text = ctx.message.text;
       if (!text || text.startsWith("/")) return;
 
+      const messageId = ctx.message.message_id;
+      const chatId = ctx.message.chat.id;
+
       // Show typing indicator
       await ctx.sendChatAction("typing");
+
+      // Include Telegram context so Rue can react to messages
+      const prompt = `[Telegram message from chat_id=${chatId} message_id=${messageId}]\n${text}`;
 
       const tryAsk = async (retry = false): Promise<string> => {
         if (retry) this.disconnectClient(telegramId);
@@ -143,7 +149,7 @@ export class TelegramBot {
         }, 4000);
 
         try {
-          const result = await client.ask(text, {
+          const result = await client.ask(prompt, {
             onStream: (chunk) => { response += chunk; },
           });
           return result.output || response;
