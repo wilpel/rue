@@ -15,6 +15,8 @@ export class TelegramBot {
   private store: TelegramStore;
   private daemonUrl: string;
   private activeClients = new Map<number, DaemonClient>();
+  private messageQueues = new Map<number, Array<() => Promise<void>>>();
+  private processingUsers = new Set<number>();
 
   constructor(config: TelegramBotConfig) {
     this.bot = new Telegraf(config.botToken);
@@ -130,6 +132,7 @@ export class TelegramBot {
       const text = ctx.message.text;
       if (!text || text.startsWith("/")) return;
 
+      await this.enqueueMessage(telegramId, async () => {
       const messageId = ctx.message.message_id;
       const chatId = ctx.message.chat.id;
 
@@ -211,6 +214,7 @@ export class TelegramBot {
         await ctx.reply("Something went wrong. Try again in a moment.").catch(() => {});
         this.disconnectClient(telegramId);
       }
+      }); // end enqueueMessage
     });
   }
 
@@ -236,6 +240,24 @@ export class TelegramBot {
       client.disconnect();
       this.activeClients.delete(telegramId);
     }
+  }
+
+  private async enqueueMessage(userId: number, handler: () => Promise<void>): Promise<void> {
+    if (!this.messageQueues.has(userId)) this.messageQueues.set(userId, []);
+    this.messageQueues.get(userId)!.push(handler);
+
+    if (this.processingUsers.has(userId)) return; // already processing
+    this.processingUsers.add(userId);
+
+    while (this.messageQueues.get(userId)?.length) {
+      const next = this.messageQueues.get(userId)!.shift()!;
+      try { await next(); } catch (err) {
+        console.error(`[telegram] Queue error for ${userId}:`, err instanceof Error ? err.message : err);
+      }
+    }
+
+    this.processingUsers.delete(userId);
+    this.messageQueues.delete(userId);
   }
 
   private async sendLongMessage(

@@ -22,6 +22,7 @@ import { TelegramStore } from "../interfaces/telegram/store.js";
 import { JobScheduler } from "./scheduler.js";
 import { HealthMonitor } from "../agents/health.js";
 import { log } from "../shared/logger.js";
+import type { SDKAssistantMessage, SDKResultMessage } from "../shared/sdk-types.js";
 
 // Resolve the rue-bot project root (where SYSTEM.md and skills/ live)
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -716,9 +717,10 @@ ${projectPrompt ? "## Project-Specific Instructions\n\n" + projectPrompt : ""}`;
       let lastLoggedOutput = "";
       for await (const message of q) {
         if (message.type === "assistant") {
-          const content = (message as { message: { content: Array<{ type: string; text?: string }> } }).message.content;
+          const assistantMsg = message as SDKAssistantMessage;
+          const content = assistantMsg.message.content;
           for (const block of content) {
-            if (block.type === "text" && block.text) output += block.text;
+            if (block.type === "text") output += (block as { type: "text"; text: string }).text;
           }
           // Log periodic output updates (every new assistant message)
           if (output !== lastLoggedOutput) {
@@ -727,7 +729,7 @@ ${projectPrompt ? "## Project-Specific Instructions\n\n" + projectPrompt : ""}`;
           }
         }
         if (message.type === "result") {
-          const resultMsg = message as { subtype: string; result?: string };
+          const resultMsg = message as SDKResultMessage;
           if (resultMsg.subtype === "success" && resultMsg.result) {
             output = resultMsg.result;
           }

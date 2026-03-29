@@ -43,7 +43,11 @@ export class TelegramStore {
   }
 
   getBotToken(): string | undefined {
-    return this.load().botToken;
+    // Check env var first
+    if (process.env.TELEGRAM_BOT_TOKEN) return process.env.TELEGRAM_BOT_TOKEN;
+    // Fall back to config file
+    const config = this.load();
+    return config.botToken;
   }
 
   setBotToken(token: string): void {

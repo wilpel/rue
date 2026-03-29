@@ -1,4 +1,5 @@
 import type { AgentConfig, SpawnResult } from "./types.js";
+import type { SDKSystemMessage, SDKStreamEvent, SDKAssistantMessage, SDKResultMessage } from "../shared/sdk-types.js";
 
 type OutputCallback = (chunk: string) => void;
 
@@ -67,8 +68,9 @@ export class ClaudeProcess {
       for await (const message of q) {
         switch (message.type) {
           case "system": {
-            if ((message as { subtype?: string }).subtype === "init") {
-              sessionId = (message as { session_id: string }).session_id;
+            const sysMsg = message as SDKSystemMessage;
+            if (sysMsg.subtype === "init") {
+              sessionId = sysMsg.session_id;
               this._sessionId = sessionId;
             }
             break;
@@ -76,7 +78,8 @@ export class ClaudeProcess {
 
           case "stream_event": {
             // Partial streaming events — token by token
-            const event = (message as { event?: { type?: string; delta?: { type?: string; text?: string } } }).event;
+            const streamEvt = message as SDKStreamEvent;
+            const event = streamEvt.event;
             if (event?.type === "content_block_delta" && event.delta?.type === "text_delta" && event.delta.text) {
               const text = event.delta.text;
               streamedText += text;
@@ -89,9 +92,10 @@ export class ClaudeProcess {
 
           case "assistant": {
             // Full assistant message — extract text for non-streaming fallback
-            const content = (message as { message: { content: Array<{ type: string; text?: string }> } }).message.content;
+            const assistantMsg = message as SDKAssistantMessage;
+            const content = assistantMsg.message.content;
             const textBlocks = content.filter((b) => b.type === "text");
-            const fullText = textBlocks.map((b) => b.text ?? "").join("");
+            const fullText = textBlocks.map((b) => (b as { type: "text"; text: string }).text).join("");
 
             // If we didn't get streaming events, emit the full text
             if (!streamedText && fullText) {
@@ -104,27 +108,17 @@ export class ClaudeProcess {
           }
 
           case "result": {
-            const resultMsg = message as {
-              subtype: string;
-              total_cost_usd: number;
-              num_turns: number;
-              result?: string;
-              errors?: string[];
-              usage: {
-                input_tokens: number;
-                output_tokens: number;
-                cache_read_input_tokens?: number;
-                cache_creation_input_tokens?: number;
-              };
-            };
+            const resultMsg = message as SDKResultMessage & { num_turns: number };
             cost = resultMsg.total_cost_usd;
             numTurns = resultMsg.num_turns;
-            usage = {
-              inputTokens: resultMsg.usage.input_tokens,
-              outputTokens: resultMsg.usage.output_tokens,
-              cacheReadInputTokens: resultMsg.usage.cache_read_input_tokens ?? 0,
-              cacheCreationInputTokens: resultMsg.usage.cache_creation_input_tokens ?? 0,
-            };
+            if (resultMsg.usage) {
+              usage = {
+                inputTokens: resultMsg.usage.input_tokens,
+                outputTokens: resultMsg.usage.output_tokens,
+                cacheReadInputTokens: resultMsg.usage.cache_read_input_tokens ?? 0,
+                cacheCreationInputTokens: resultMsg.usage.cache_creation_input_tokens ?? 0,
+              };
+            }
 
             if (resultMsg.subtype === "success" && resultMsg.result) {
               // Use result text if we somehow missed streaming

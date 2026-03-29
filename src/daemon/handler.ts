@@ -7,6 +7,7 @@ import type { ClientFrame, DaemonFrame } from "./protocol.js";
 import type { WebSocket } from "ws";
 import { serializeDaemonFrame } from "./protocol.js";
 import { log } from "../shared/logger.js";
+import type { SDKSystemMessage, SDKStreamEvent, SDKAssistantMessage, SDKUserMessage, SDKResultMessage } from "../shared/sdk-types.js";
 
 export interface HandlerDeps {
   projectRoot: string;
@@ -94,7 +95,7 @@ async function handleCmd(
             gotAnyMessage = true;
             switch (message.type) {
               case "system": {
-                const sysMsg = message as { subtype?: string; session_id?: string };
+                const sysMsg = message as SDKSystemMessage;
                 if (sysMsg.subtype === "init" && sysMsg.session_id) {
                   sessionMap.set(ws, sysMsg.session_id);
                   lastSessionId = sysMsg.session_id;
@@ -104,7 +105,8 @@ async function handleCmd(
               }
 
               case "stream_event": {
-                const event = (message as { event?: { type?: string; delta?: { type?: string; text?: string } } }).event;
+                const streamEvt = message as SDKStreamEvent;
+                const event = streamEvt.event;
                 if (event?.type === "content_block_delta" && event.delta?.type === "text_delta" && event.delta.text) {
                   allText += event.delta.text;
                   streamedInCurrentTurn += event.delta.text.length;
@@ -114,12 +116,9 @@ async function handleCmd(
               }
 
               case "assistant": {
-                const assistantMsg = message as {
-                  message: { content: Array<{ type: string; text?: string; name?: string; input?: Record<string, unknown>; id?: string }> };
-                  parent_tool_use_id: string | null;
-                };
+                const assistantMsg = message as SDKAssistantMessage;
                 const content = assistantMsg.message.content;
-                const fullText = content.filter(b => b.type === "text").map(b => b.text ?? "").join("");
+                const fullText = content.filter(b => b.type === "text").map(b => (b as { type: "text"; text: string }).text).join("");
 
                 if (fullText && streamedInCurrentTurn === 0) {
                   allText += fullText;
@@ -128,19 +127,22 @@ async function handleCmd(
                 streamedInCurrentTurn = 0;
 
                 for (const block of content) {
-                  if (block.type === "tool_use" && block.name === "Agent") {
-                    const input = block.input as { description?: string; prompt?: string } | undefined;
-                    const desc = input?.description ?? input?.prompt ?? "running task";
-                    const agentId = block.id ?? `sub-${Date.now()}`;
-                    deps.bus.emit("agent:spawned", { id: agentId, task: desc, lane: "sub" });
-                    deps.messages.append({ role: "agent-event", content: desc, metadata: { agentId, state: "spawned" } });
+                  if (block.type === "tool_use") {
+                    const toolBlock = block as { type: "tool_use"; name: string; id?: string; input?: Record<string, unknown> };
+                    if (toolBlock.name === "Agent") {
+                      const input = toolBlock.input as { description?: string; prompt?: string } | undefined;
+                      const desc = input?.description ?? input?.prompt ?? "running task";
+                      const agentId = toolBlock.id ?? `sub-${Date.now()}`;
+                      deps.bus.emit("agent:spawned", { id: agentId, task: desc, lane: "sub" });
+                      deps.messages.append({ role: "agent-event", content: desc, metadata: { agentId, state: "spawned" } });
+                    }
                   }
                 }
                 break;
               }
 
               case "user": {
-                const userMsg = message as { message: { content: Array<{ type: string; tool_use_id?: string }> } };
+                const userMsg = message as SDKUserMessage;
                 for (const block of userMsg.message.content) {
                   if (block.type === "tool_result" && block.tool_use_id) {
                     deps.bus.emit("agent:completed", { id: block.tool_use_id, result: "", cost: 0 });
@@ -150,7 +152,7 @@ async function handleCmd(
               }
 
               case "result": {
-                const resultMsg = message as { subtype: string; total_cost_usd: number; result?: string; session_id?: string };
+                const resultMsg = message as SDKResultMessage;
                 cost = resultMsg.total_cost_usd;
                 if (resultMsg.session_id) { sessionMap.set(ws, resultMsg.session_id); lastSessionId = resultMsg.session_id; lastSessionTime = Date.now(); }
                 if (resultMsg.subtype === "success" && resultMsg.result && !allText) {
