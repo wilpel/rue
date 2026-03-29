@@ -157,19 +157,21 @@ export class TelegramBot {
           clearInterval(typingInterval);
         }
 
-        if (!fullResponse.trim()) {
-          await ctx.reply("(no response)");
-          return;
+        // Allow AI to choose not to respond
+        const trimmed = fullResponse.trim();
+        if (!trimmed || trimmed === "[no_response]" || trimmed.toLowerCase() === "[no response]") {
+          return; // Silent — no message sent
         }
 
-        // Split into logical chunks: separate by double-newline into paragraphs,
-        // then group small paragraphs together so we don't spam tiny messages.
-        // Aim for ~1-3 messages max.
-        const paragraphs = fullResponse.split(/\n\n+/).filter(p => p.trim());
+        // Strip [no_response] tag if it appears alongside other text
+        const cleaned = trimmed.replace(/\[no_?response\]/gi, "").trim();
+        if (!cleaned) return;
+
+        // Split into logical chunks
+        const paragraphs = cleaned.split(/\n\n+/).filter(p => p.trim());
 
         if (paragraphs.length <= 2) {
-          // Short response — send as one message
-          await this.sendLongMessage(ctx, fullResponse.trim());
+          await this.sendLongMessage(ctx, cleaned);
         } else {
           // Group paragraphs into chunks of ~2000 chars each
           const chunks: string[] = [];

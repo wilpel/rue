@@ -208,9 +208,13 @@ async function handleCmd(
           }
 
           if (result) {
-            deps.messages.append({ role: "assistant", content: result.allText });
-            deps.bus.emit("message:created", { id: "", role: "assistant", content: result.allText, timestamp: Date.now() });
-            send({ type: "result", id: frame.id, data: { output: result.allText, cost: result.cost } });
+            // Allow AI to choose not to respond with [no_response]
+            const cleanedText = result.allText.replace(/\[no_?response\]/gi, "").trim();
+            if (cleanedText) {
+              deps.messages.append({ role: "assistant", content: cleanedText });
+              deps.bus.emit("message:created", { id: "", role: "assistant", content: cleanedText, timestamp: Date.now() });
+            }
+            send({ type: "result", id: frame.id, data: { output: cleanedText, cost: result.cost } });
           } else {
             const errMsg = lastError instanceof Error ? lastError.message : String(lastError);
             log.error(`[rue] All retries failed: ${errMsg}`);
