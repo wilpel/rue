@@ -106,6 +106,9 @@ export class DaemonServer {
       this.persistence.append(channel, payload);
     });
 
+    // Kill any zombie claude processes from previous runs
+    this.killZombieClaude();
+
     // Reset orphaned in-progress tasks from previous crash/shutdown
     this.resetOrphanedTasks();
 
@@ -423,6 +426,24 @@ export class DaemonServer {
     }
 
     return task;
+  }
+
+  // ── Zombie Cleanup — kill leftover claude processes from previous runs ──
+
+  private killZombieClaude(): void {
+    try {
+      const { execSync } = require("node:child_process");
+      const result = execSync("pgrep -f 'claude.*--dangerously-skip-permissions' 2>/dev/null", { encoding: "utf-8" }).trim();
+      if (result) {
+        const pids = result.split("\n").filter(Boolean);
+        for (const pid of pids) {
+          try {
+            process.kill(parseInt(pid, 10), "SIGTERM");
+          } catch { /* already dead */ }
+        }
+        console.log(`[rue] Killed ${pids.length} zombie claude process(es)`);
+      }
+    } catch { /* no zombies found — pgrep returns non-zero */ }
   }
 
   // ── Task Recovery — reset orphaned in-progress tasks on startup ──

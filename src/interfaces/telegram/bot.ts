@@ -139,14 +139,13 @@ export class TelegramBot {
       // Include Telegram context so Rue can react to messages
       const prompt = `[Telegram message from chat_id=${chatId} message_id=${messageId}]\n${text}`;
 
-      const tryAsk = async (retry = false): Promise<void> => {
+      const askWithWatchdog = async (retry = false): Promise<void> => {
         if (retry) this.disconnectClient(telegramId);
         const client = await this.getOrCreateClient(telegramId);
 
         let buffer = "";
         let sentAnything = false;
         let flushTimer: NodeJS.Timeout | null = null;
-
         const typingInterval = setInterval(() => {
           ctx.sendChatAction("typing").catch(() => {});
         }, 4000);
@@ -165,17 +164,14 @@ export class TelegramBot {
           const result = await client.ask(prompt, {
             onStream: (chunk) => {
               buffer += chunk;
-              // Flush on double newline (paragraph break) or after accumulating text
               if (buffer.includes("\n\n")) {
                 flush();
               } else if (!flushTimer) {
-                // Flush after 1.5s pause in streaming
                 flushTimer = setTimeout(() => flush(), 1500);
               }
             },
           });
 
-          // Final flush of any remaining text
           if (result.output && !sentAnything) {
             buffer = result.output;
           }
@@ -192,10 +188,16 @@ export class TelegramBot {
 
       try {
         try {
-          await tryAsk(false);
-        } catch {
-          console.log(`[telegram] Retrying for user ${telegramId} after connection error`);
-          await tryAsk(true);
+          await askWithWatchdog(false);
+        } catch (firstErr) {
+          const msg = firstErr instanceof Error ? firstErr.message : String(firstErr);
+          console.log(`[telegram] First attempt failed for user ${telegramId}: ${msg}. Retrying...`);
+          try {
+            await askWithWatchdog(true);
+          } catch {
+            // Both attempts failed — send error and clean up
+            throw firstErr;
+          }
         }
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
