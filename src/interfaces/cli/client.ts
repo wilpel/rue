@@ -17,6 +17,10 @@ export class DaemonClient {
 
   constructor(private readonly url: string) {}
 
+  get connected(): boolean {
+    return this.ws !== null && this.ws.readyState === WebSocket.OPEN;
+  }
+
   async connect(): Promise<void> {
     return new Promise((resolve, reject) => {
       this.ws = new WebSocket(this.url);

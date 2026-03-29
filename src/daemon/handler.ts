@@ -60,39 +60,34 @@ async function handleCmd(
         deps.messages.append({ role: "user", content: text });
         deps.bus.emit("message:created", { id: "", role: "user", content: text, timestamp: Date.now() });
 
-        try {
+        // Try with session resume first, fall back to fresh session on failure
+        const runQuery = async (resumeId: string | undefined) => {
           const { query } = await import("@anthropic-ai/claude-agent-sdk");
 
           const q = query({
             prompt: text,
             options: {
               cwd: workdir,
-              // Our own system prompt — not Claude Code's preset
               systemPrompt,
-              tools: [
-                "Read", "Write", "Edit", "Bash", "Glob", "Grep",
-                "WebSearch", "WebFetch", "Agent",
-              ],
-              allowedTools: [
-                "Read", "Write", "Edit", "Bash", "Glob", "Grep",
-                "WebSearch", "WebFetch", "Agent",
-              ],
+              tools: ["Read", "Write", "Edit", "Bash", "Glob", "Grep", "WebSearch", "WebFetch", "Agent"],
+              allowedTools: ["Read", "Write", "Edit", "Bash", "Glob", "Grep", "WebSearch", "WebFetch", "Agent"],
               permissionMode: "bypassPermissions",
               allowDangerouslySkipPermissions: true,
               maxTurns: 50,
               abortController: new AbortController(),
               includePartialMessages: true,
-              // Don't load Claude Code's own settings/skills — use ours
               settingSources: [],
-              ...(existingSessionId ? { resume: existingSessionId } : {}),
+              ...(resumeId ? { resume: resumeId } : {}),
             },
           });
 
           let allText = "";
           let cost = 0;
           let streamedInCurrentTurn = 0;
+          let gotAnyMessage = false;
 
           for await (const message of q) {
+            gotAnyMessage = true;
             switch (message.type) {
               case "system": {
                 const sysMsg = message as { subtype?: string; session_id?: string };
@@ -104,14 +99,8 @@ async function handleCmd(
               }
 
               case "stream_event": {
-                const event = (message as {
-                  event?: { type?: string; delta?: { type?: string; text?: string } };
-                }).event;
-                if (
-                  event?.type === "content_block_delta" &&
-                  event.delta?.type === "text_delta" &&
-                  event.delta.text
-                ) {
+                const event = (message as { event?: { type?: string; delta?: { type?: string; text?: string } } }).event;
+                if (event?.type === "content_block_delta" && event.delta?.type === "text_delta" && event.delta.text) {
                   allText += event.delta.text;
                   streamedInCurrentTurn += event.delta.text.length;
                   send({ type: "stream", agentId: "main", chunk: event.delta.text });
@@ -125,17 +114,12 @@ async function handleCmd(
                   parent_tool_use_id: string | null;
                 };
                 const content = assistantMsg.message.content;
-
-                const fullText = content
-                  .filter((b) => b.type === "text")
-                  .map((b) => b.text ?? "")
-                  .join("");
+                const fullText = content.filter(b => b.type === "text").map(b => b.text ?? "").join("");
 
                 if (fullText && streamedInCurrentTurn === 0) {
                   allText += fullText;
                   send({ type: "stream", agentId: "main", chunk: fullText });
                 }
-
                 streamedInCurrentTurn = 0;
 
                 for (const block of content) {
@@ -144,22 +128,14 @@ async function handleCmd(
                     const desc = input?.description ?? input?.prompt ?? "running task";
                     const agentId = block.id ?? `sub-${Date.now()}`;
                     deps.bus.emit("agent:spawned", { id: agentId, task: desc, lane: "sub" });
-
-                    // Persist agent event
-                    deps.messages.append({
-                      role: "agent-event",
-                      content: desc,
-                      metadata: { agentId, state: "spawned" },
-                    });
+                    deps.messages.append({ role: "agent-event", content: desc, metadata: { agentId, state: "spawned" } });
                   }
                 }
                 break;
               }
 
               case "user": {
-                const userMsg = message as {
-                  message: { content: Array<{ type: string; tool_use_id?: string }> };
-                };
+                const userMsg = message as { message: { content: Array<{ type: string; tool_use_id?: string }> } };
                 for (const block of userMsg.message.content) {
                   if (block.type === "tool_result" && block.tool_use_id) {
                     deps.bus.emit("agent:completed", { id: block.tool_use_id, result: "", cost: 0 });
@@ -169,19 +145,9 @@ async function handleCmd(
               }
 
               case "result": {
-                const resultMsg = message as {
-                  subtype: string;
-                  total_cost_usd: number;
-                  result?: string;
-                  session_id?: string;
-                };
+                const resultMsg = message as { subtype: string; total_cost_usd: number; result?: string; session_id?: string };
                 cost = resultMsg.total_cost_usd;
-
-                if (resultMsg.session_id) {
-                  sessionMap.set(ws, resultMsg.session_id);
-                  lastSessionId = resultMsg.session_id;
-                }
-
+                if (resultMsg.session_id) { sessionMap.set(ws, resultMsg.session_id); lastSessionId = resultMsg.session_id; }
                 if (resultMsg.subtype === "success" && resultMsg.result && !allText) {
                   allText = resultMsg.result;
                   send({ type: "stream", agentId: "main", chunk: resultMsg.result });
@@ -191,13 +157,30 @@ async function handleCmd(
             }
           }
 
-          // Persist assistant response
-          deps.messages.append({ role: "assistant", content: allText });
-          deps.bus.emit("message:created", { id: "", role: "assistant", content: allText, timestamp: Date.now() });
+          if (!gotAnyMessage) throw new Error("No response from SDK");
 
-          send({ type: "result", id: frame.id, data: { output: allText, cost } });
+          return { allText, cost };
+        };
+
+        try {
+          let result: { allText: string; cost: number };
+          try {
+            // Try with session resume
+            result = await runQuery(existingSessionId);
+          } catch (resumeErr) {
+            // Resume failed — clear session and retry fresh
+            console.error(`[rue] Session resume failed, starting fresh: ${resumeErr instanceof Error ? resumeErr.message : resumeErr}`);
+            sessionMap.delete(ws);
+            lastSessionId = undefined;
+            result = await runQuery(undefined);
+          }
+
+          deps.messages.append({ role: "assistant", content: result.allText });
+          deps.bus.emit("message:created", { id: "", role: "assistant", content: result.allText, timestamp: Date.now() });
+          send({ type: "result", id: frame.id, data: { output: result.allText, cost: result.cost } });
         } catch (sdkError) {
           const message = sdkError instanceof Error ? sdkError.message : String(sdkError);
+          console.error(`[rue] SDK error: ${message}`);
           send({ type: "error", id: frame.id, code: "SDK_ERROR", message });
         }
         break;

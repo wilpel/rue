@@ -173,7 +173,13 @@ export class TelegramBot {
 
   private async getOrCreateClient(telegramId: number): Promise<DaemonClient> {
     const existing = this.activeClients.get(telegramId);
-    if (existing) return existing;
+    if (existing && existing.connected) return existing;
+
+    // Clean up dead client
+    if (existing) {
+      existing.disconnect();
+      this.activeClients.delete(telegramId);
+    }
 
     const client = new DaemonClient(this.daemonUrl);
     await client.connect();
