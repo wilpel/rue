@@ -100,6 +100,9 @@ export class DaemonServer {
       this.persistence.append(channel, payload);
     });
 
+    // Reset orphaned in-progress tasks from previous crash/shutdown
+    this.resetOrphanedTasks();
+
     // Watch for task-added events and auto-spawn agents
     this.startTaskWatcher();
 
@@ -402,6 +405,36 @@ export class DaemonServer {
     }
 
     return task;
+  }
+
+  // ── Task Recovery — reset orphaned in-progress tasks on startup ──
+
+  private resetOrphanedTasks(): void {
+    if (!fs.existsSync(this.projectsDir)) return;
+
+    const projDirs = fs.readdirSync(this.projectsDir, { withFileTypes: true }).filter(d => d.isDirectory());
+    let resetCount = 0;
+
+    for (const projDir of projDirs) {
+      const tasksDir = path.join(this.projectsDir, projDir.name, "tasks");
+      if (!fs.existsSync(tasksDir)) continue;
+
+      const files = fs.readdirSync(tasksDir).filter(f => f.endsWith(".md"));
+      for (const file of files) {
+        const filePath = path.join(tasksDir, file);
+        let content = fs.readFileSync(filePath, "utf-8");
+        if (content.includes("status: in-progress")) {
+          content = content.replace(/status:\s*\S+/, "status: todo");
+          content = content.replace(/started:\s*\S+/, "started: null");
+          fs.writeFileSync(filePath, content);
+          resetCount++;
+        }
+      }
+    }
+
+    if (resetCount > 0) {
+      console.log(`[rue] Reset ${resetCount} orphaned in-progress task(s) to todo`);
+    }
   }
 
   // ── Task Watcher — auto-spawn agents on new tasks ──────────────
