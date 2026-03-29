@@ -20,6 +20,7 @@ import { fileURLToPath } from "node:url";
 import { TelegramBot } from "../interfaces/telegram/bot.js";
 import { TelegramStore } from "../interfaces/telegram/store.js";
 import { JobScheduler } from "./scheduler.js";
+import { HealthMonitor } from "../agents/health.js";
 import { log } from "../shared/logger.js";
 
 // Resolve the rue-bot project root (where SYSTEM.md and skills/ live)
@@ -47,6 +48,7 @@ export class DaemonServer {
   private assembler: ContextAssembler;
   private telegramBot: TelegramBot | null = null;
   private scheduler: JobScheduler;
+  private healthMonitor: HealthMonitor;
 
   constructor(private readonly config: DaemonServerConfig) {
     this.bus = new EventBus();
@@ -73,9 +75,16 @@ export class DaemonServer {
       { schedulesDir: path.join(config.dataDir, "schedules") },
       { bus: this.bus, messages: this.messages },
     );
+    this.healthMonitor = new HealthMonitor(this.bus, { stallThresholdMs: 120_000, checkIntervalMs: 30_000 });
   }
 
   async start(): Promise<void> {
+    // Restore working memory from previous session snapshot
+    const snapshotPath = path.join(this.config.dataDir, "working-memory.json");
+    if (fs.existsSync(snapshotPath)) {
+      this.working.fromSnapshot(fs.readFileSync(snapshotPath, "utf-8"));
+    }
+
     // Use an HTTP server so browsers can upgrade to WebSocket properly
     this.httpServer = createServer((req, res) => {
       this.handleHttpRequest(req, res);
@@ -91,7 +100,19 @@ export class DaemonServer {
     });
 
     this.wss.on("connection", (ws: WebSocket) => {
+      let messageCount = 0;
+      let lastReset = Date.now();
+
       ws.on("message", async (data) => {
+        // Rate limit: max 30 messages per minute per connection
+        const now = Date.now();
+        if (now - lastReset > 60_000) { messageCount = 0; lastReset = now; }
+        messageCount++;
+        if (messageCount > 30) {
+          ws.send(serializeDaemonFrame({ type: "error", id: "ratelimit", code: "RATE_LIMIT", message: "Too many requests. Slow down." }));
+          return;
+        }
+
         try {
           const frame = parseClientFrame(data.toString());
           await handler(frame, ws);
@@ -116,6 +137,9 @@ export class DaemonServer {
     // Start job scheduler to poll for due scheduled jobs
     this.scheduler.start();
 
+    // Start health monitor to detect stalled agents
+    this.healthMonitor.start();
+
     this.bus.emit("system:started", {});
     log.info("[rue] Bus + scheduler started");
 
@@ -128,7 +152,13 @@ export class DaemonServer {
 
   async stop(): Promise<void> {
     this.bus.emit("system:shutdown", { reason: "shutdown requested" });
+
+    // Persist working memory snapshot before shutdown
+    const snapshotPath = path.join(this.config.dataDir, "working-memory.json");
+    fs.writeFileSync(snapshotPath, this.working.toSnapshot());
+
     if (this._taskWatcher) clearInterval(this._taskWatcher);
+    this.healthMonitor.stop();
     this.scheduler.stop();
     if (this.telegramBot) await this.telegramBot.stop();
     this.supervisor.shutdown();
@@ -270,6 +300,27 @@ export class DaemonServer {
         const recentMessages = this.messages.recent(10);
         const events = this.persistence.readTail(30).reverse();
         json({ agents: agents.map(a => ({ id: a.id, task: a.config.task, state: a.state, lane: a.config.lane })), projects, recentMessages, events });
+        return;
+      }
+
+      // POST /api/projects/:name/tasks
+      const addTaskMatch = pathname.match(/^\/api\/projects\/([^/]+)\/tasks$/);
+      if (addTaskMatch && req.method === "POST") {
+        let body = "";
+        req.on("data", (chunk: Buffer) => { body += chunk.toString(); });
+        req.on("end", () => {
+          try {
+            const { title, description } = JSON.parse(body);
+            if (!title) { json({ error: "title required" }, 400); return; }
+            const projectName = decodeURIComponent(addTaskMatch[1]);
+            // Use the CLI skill to add the task
+            const { execSync } = require("node:child_process");
+            execSync(`node --import tsx/esm skills/projects/run.ts add-task --project "${projectName}" --task "${title.replace(/"/g, '\\"')}"${description ? ` --description "${description.replace(/"/g, '\\"')}"` : ""}`, { cwd: PROJECT_ROOT, encoding: "utf-8" });
+            json({ ok: true });
+          } catch (err) {
+            json({ error: err instanceof Error ? err.message : "Failed to add task" }, 500);
+          }
+        });
         return;
       }
 
@@ -606,6 +657,7 @@ ${projectPrompt ? "## Project-Specific Instructions\n\n" + projectPrompt : ""}`;
 
     // Emit agent spawned event
     this.bus.emit("agent:spawned", { id: agentId, task: taskDescription, lane: "sub" });
+    this.healthMonitor.trackAgent(agentId, Date.now());
     await logActivity("started", `Working on: ${taskDescription}`);
 
     // Spawn the agent via Claude SDK
@@ -666,6 +718,7 @@ ${projectPrompt ? "## Project-Specific Instructions\n\n" + projectPrompt : ""}`;
       }
 
       this.bus.emit("agent:completed", { id: agentId, result: output.slice(0, 200), cost: 0 });
+      this.healthMonitor.untrackAgent(agentId);
       await logActivity("completed", output.slice(0, 1000));
 
       // Persist result as a push message
@@ -686,6 +739,7 @@ ${projectPrompt ? "## Project-Specific Instructions\n\n" + projectPrompt : ""}`;
       }
 
       this.bus.emit("agent:failed", { id: `project-${projectName}`, error: errMsg, retryable: false });
+      this.healthMonitor.untrackAgent(agentId);
       await logActivity("failed", errMsg);
     }
   }

@@ -21,6 +21,7 @@ export interface HandlerDeps {
 // Also keep a global "last session" so new WS connections can resume.
 const sessionMap = new WeakMap<WebSocket, string>();
 let lastSessionId: string | undefined;
+let lastSessionTime = 0;
 
 export function createHandler(deps: HandlerDeps) {
   return async (frame: ClientFrame, ws: WebSocket): Promise<void> => {
@@ -56,7 +57,7 @@ async function handleCmd(
         log.info(`[rue] ask: "${text.slice(0, 60)}${text.length > 60 ? "..." : ""}"`);
         const systemPrompt = deps.assembler.assemble(text);
         const workdir = (frame.args.workdir as string) ?? deps.projectRoot;
-        const existingSessionId = sessionMap.get(ws) ?? lastSessionId;
+        const existingSessionId = sessionMap.get(ws) ?? (Date.now() - lastSessionTime < 1800_000 ? lastSessionId : undefined);
 
         // Persist user message
         deps.messages.append({ role: "user", content: text });
@@ -97,6 +98,7 @@ async function handleCmd(
                 if (sysMsg.subtype === "init" && sysMsg.session_id) {
                   sessionMap.set(ws, sysMsg.session_id);
                   lastSessionId = sysMsg.session_id;
+                  lastSessionTime = Date.now();
                 }
                 break;
               }
@@ -150,7 +152,7 @@ async function handleCmd(
               case "result": {
                 const resultMsg = message as { subtype: string; total_cost_usd: number; result?: string; session_id?: string };
                 cost = resultMsg.total_cost_usd;
-                if (resultMsg.session_id) { sessionMap.set(ws, resultMsg.session_id); lastSessionId = resultMsg.session_id; }
+                if (resultMsg.session_id) { sessionMap.set(ws, resultMsg.session_id); lastSessionId = resultMsg.session_id; lastSessionTime = Date.now(); }
                 if (resultMsg.subtype === "success" && resultMsg.result && !allText) {
                   allText = resultMsg.result;
                   send({ type: "stream", agentId: "main", chunk: resultMsg.result });

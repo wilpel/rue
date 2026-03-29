@@ -64,6 +64,8 @@ function ProjectDetailPanel({ name }: { name: string }) {
   const [docs, setDocs] = useState<ProjectDoc[]>([]);
   const [tab, setTab] = useState<"board" | "docs">("board");
   const [selDoc, setSelDoc] = useState<string | null>(null);
+  const [showAddTask, setShowAddTask] = useState(false);
+  const [newTaskTitle, setNewTaskTitle] = useState("");
 
   useEffect(() => {
     Promise.all([api.project(name), api.projectDocs(name)])
@@ -88,10 +90,26 @@ function ProjectDetailPanel({ name }: { name: string }) {
             </button>
           ))}
         </div>
-        <button className="ml-auto flex items-center gap-1 px-2.5 py-1 bg-accent text-bg text-[11px] font-semibold rounded-md hover:brightness-110 transition-all">
+        <button onClick={() => setShowAddTask(!showAddTask)} className="ml-auto flex items-center gap-1 px-2.5 py-1 bg-accent text-bg text-[11px] font-semibold rounded-md hover:brightness-110 transition-all">
           <Plus size={12} /> Task
         </button>
       </div>
+
+      {showAddTask && (
+        <div className="border-b border-line px-4 py-3 flex gap-2">
+          <input value={newTaskTitle} onChange={e => setNewTaskTitle(e.target.value)} placeholder="Task title..."
+            className="flex-1 h-9 px-3 bg-surface border border-line rounded-lg text-text text-sm placeholder:text-muted focus:outline-none focus:border-accent/30" />
+          <button onClick={async () => {
+            if (!newTaskTitle.trim()) return;
+            await fetch(`/api/projects/${name}/tasks`, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({title: newTaskTitle}) });
+            setNewTaskTitle(""); setShowAddTask(false);
+            // Reload project
+            const [p, d] = await Promise.all([api.project(name!), api.projectDocs(name!)]);
+            setProject(p); setDocs(d);
+          }} className="h-9 px-4 bg-accent text-bg text-xs font-semibold rounded-lg hover:brightness-110">Create</button>
+          <button onClick={() => { setShowAddTask(false); setNewTaskTitle(""); }} className="h-9 px-3 text-muted text-xs hover:text-secondary">Cancel</button>
+        </div>
+      )}
 
       {tab === "board" ? (
         <div className="flex-1 overflow-x-auto p-4">
