@@ -36,6 +36,14 @@ export function loadConfig(filePath: string): RueConfig {
   if (!fs.existsSync(filePath)) {
     return defaultConfig;
   }
-  const raw = JSON.parse(fs.readFileSync(filePath, "utf-8"));
-  return ConfigSchema.parse(raw);
+  try {
+    const raw = JSON.parse(fs.readFileSync(filePath, "utf-8"));
+    return ConfigSchema.parse(raw);
+  } catch (err) {
+    if (err instanceof z.ZodError) {
+      const issues = err.issues.map(i => `  - ${i.path.join(".")}: ${i.message}`).join("\n");
+      throw new Error(`Invalid config at ${filePath}:\n${issues}`);
+    }
+    throw err;
+  }
 }

@@ -141,8 +141,45 @@ export function createCLI(): Command {
       process.on("SIGTERM", shutdown);
     });
 
-  daemon.command("stop").description("Stop the daemon").action(() => {
-    console.log("Daemon stop — not yet implemented (use Ctrl+C in foreground mode)");
+  daemon.command("stop").description("Stop the daemon").action(async () => {
+    try {
+      const { execSync } = await import("node:child_process");
+      const pids = execSync("lsof -i :18800 -t 2>/dev/null", { encoding: "utf-8" }).trim();
+      if (!pids) {
+        console.log("Daemon is not running.");
+        return;
+      }
+      for (const pid of pids.split("\n")) {
+        try { process.kill(parseInt(pid, 10), "SIGTERM"); } catch {}
+      }
+      console.log("Daemon stopped.");
+    } catch {
+      console.log("Daemon is not running.");
+    }
+  });
+
+  daemon.command("restart").description("Restart the daemon").action(async () => {
+    const { execSync, spawn: _spawn } = await import("node:child_process");
+    // Stop
+    try {
+      const pids = execSync("lsof -i :18800 -t 2>/dev/null", { encoding: "utf-8" }).trim();
+      if (pids) {
+        for (const pid of pids.split("\n")) {
+          try { process.kill(parseInt(pid, 10), "SIGTERM"); } catch {}
+        }
+        console.log("Stopped old daemon.");
+        await new Promise(r => setTimeout(r, 1000));
+      }
+    } catch {}
+    // Start
+    const config = loadConfig(CONFIG_PATH);
+    const server = new DaemonServer({ port: config.port, dataDir: config.dataDir });
+    console.log(`Starting Rue daemon on port ${config.port}...`);
+    await server.start();
+    console.log(`Daemon running. PID: ${process.pid}`);
+    const shutdown = async () => { console.log("\nShutting down..."); await server.stop(); process.exit(0); };
+    process.on("SIGINT", shutdown);
+    process.on("SIGTERM", shutdown);
   });
 
   // ── Telegram commands ──────────────────────────────────────────
@@ -232,6 +269,20 @@ export function createCLI(): Command {
         console.log(`\nThe bot will start automatically with the daemon.`);
       }
     });
+
+  program.command("info").description("Show daemon info").action(async () => {
+    const config = loadConfig(CONFIG_PATH);
+    console.log("Rue Bot v0.1.0");
+    console.log(`Data dir: ${config.dataDir}`);
+    console.log(`Port: ${config.port}`);
+    try {
+      const { execSync } = await import("node:child_process");
+      const pids = execSync("lsof -i :18800 -t 2>/dev/null", { encoding: "utf-8" }).trim();
+      console.log(`Daemon: ${pids ? "running (PID " + pids.split("\n")[0] + ")" : "stopped"}`);
+    } catch {
+      console.log("Daemon: stopped");
+    }
+  });
 
   return program;
 }
