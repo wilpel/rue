@@ -44,7 +44,6 @@ export class DaemonClient {
   disconnect(): void {
     this.ws?.close();
     this.ws = null;
-    this.ws = null;
   }
 
   onEvent(handler: EventHandler): () => void {

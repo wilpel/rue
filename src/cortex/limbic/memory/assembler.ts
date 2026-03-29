@@ -15,21 +15,36 @@ export interface AssemblerDeps {
 }
 
 export class ContextAssembler {
+  private systemPromptCache: string | null = null;
+  private personalityCache: string | null = null;
+  private skillsCache: string | null = null;
+
   constructor(private readonly deps: AssemblerDeps) {}
+
+  /** Clear all caches so the next call to assemble() re-reads from disk. */
+  reload(): void {
+    this.systemPromptCache = null;
+    this.personalityCache = null;
+    this.skillsCache = null;
+  }
 
   assemble(task: string): string {
     const sections: string[] = [];
 
-    // Load prompts/SYSTEM.md — the primary system guide
-    const systemMd = this.readProjectFile("prompts/SYSTEM.md");
-    if (systemMd) {
-      sections.push(systemMd);
+    // Load prompts/SYSTEM.md — the primary system guide (cached after first read)
+    if (this.systemPromptCache === null) {
+      this.systemPromptCache = this.readProjectFile("prompts/SYSTEM.md") ?? "";
+    }
+    if (this.systemPromptCache) {
+      sections.push(this.systemPromptCache);
     }
 
-    // Load prompts/PERSONALITY.md
-    const personalityMd = this.readProjectFile("prompts/PERSONALITY.md");
-    if (personalityMd) {
-      sections.push(personalityMd);
+    // Load prompts/PERSONALITY.md (cached after first read)
+    if (this.personalityCache === null) {
+      this.personalityCache = this.readProjectFile("prompts/PERSONALITY.md") ?? "";
+    }
+    if (this.personalityCache) {
+      sections.push(this.personalityCache);
     }
 
     // Dynamic identity (evolves over time)
@@ -56,10 +71,12 @@ export class ContextAssembler {
       sections.push(`## Current State\n${workingText}`);
     }
 
-    // Discover skills and append summary
-    const skillsSummary = this.discoverSkills();
-    if (skillsSummary) {
-      sections.push(skillsSummary);
+    // Discover skills and append summary (cached after first read)
+    if (this.skillsCache === null) {
+      this.skillsCache = this.discoverSkills() ?? "";
+    }
+    if (this.skillsCache) {
+      sections.push(this.skillsCache);
     }
 
     // Show running project agents

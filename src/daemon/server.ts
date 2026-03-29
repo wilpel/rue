@@ -20,6 +20,7 @@ import { fileURLToPath } from "node:url";
 import { TelegramBot } from "../interfaces/telegram/bot.js";
 import { TelegramStore } from "../interfaces/telegram/store.js";
 import { JobScheduler } from "./scheduler.js";
+import { log } from "../shared/logger.js";
 
 // Resolve the rue-bot project root (where SYSTEM.md and skills/ live)
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -116,10 +117,10 @@ export class DaemonServer {
     this.scheduler.start();
 
     this.bus.emit("system:started", {});
-    console.log("[rue] Bus + scheduler started");
+    log.info("[rue] Bus + scheduler started");
 
     // Start Telegram bot if configured (non-blocking)
-    this.startTelegramBot().catch(err => console.error("[rue] Telegram start failed:", err));
+    this.startTelegramBot().catch(err => log.error("[rue] Telegram start failed", { error: err }));
     await new Promise<void>((resolve) => {
       this.httpServer!.listen(this.config.port, resolve);
     });
@@ -154,7 +155,7 @@ export class DaemonServer {
     const token = store.getBotToken();
 
     if (!token) {
-      console.log("[telegram] No bot token configured — skipping Telegram integration");
+      log.info("[telegram] No bot token configured — skipping Telegram integration");
       return;
     }
 
@@ -166,7 +167,7 @@ export class DaemonServer {
         bus: this.bus,
       });
       await this.telegramBot.start();
-      console.log("[telegram] Bot connected and listening");
+      log.info("[telegram] Bot connected and listening");
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       console.error(`[telegram] Failed to start bot: ${msg}`);
@@ -514,17 +515,17 @@ export class DaemonServer {
       if (this.activeProjectAgents.has(key)) continue;
       this.activeProjectAgents.add(key);
 
-      console.log(`[rue] Picking up task "${nextTodo.title}" for project ${projDir.name}`);
+      log.info(`[rue] Picking up task "${nextTodo.title}" for project ${projDir.name}`);
 
       const taskPath = `tasks/${nextTodo.file}`;
-      this.spawnProjectAgent(projDir.name, taskPath, nextTodo.title).finally(() => {
-        this.activeProjectAgents.delete(key);
-      });
+      this.spawnProjectAgent(projDir.name, taskPath, nextTodo.title)
+        .catch(err => console.error(`[rue] Agent spawn failed for ${projDir.name}: ${err instanceof Error ? err.message : err}`))
+        .finally(() => { this.activeProjectAgents.delete(key); });
     }
   }
 
   private async spawnProjectAgent(projectName: string, taskFile: string, taskDescription: string): Promise<void> {
-    console.log(`[rue] Spawning agent for project "${projectName}" — ${taskDescription}`);
+    log.info(`[rue] Spawning agent for project "${projectName}" — ${taskDescription}`);
     const projectDir = path.join(this.projectsDir, projectName);
     const agentsMdPath = path.join(projectDir, "AGENTS.md");
     const taskFilePath = path.join(projectDir, taskFile);

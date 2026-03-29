@@ -56,3 +56,5 @@ export function createLogger(opts: LoggerOptions = {}): Logger {
     },
   };
 }
+
+export const log = createLogger();

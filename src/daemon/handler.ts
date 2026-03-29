@@ -6,6 +6,7 @@ import type { MessageStore } from "../messages/store.js";
 import type { ClientFrame, DaemonFrame } from "./protocol.js";
 import type { WebSocket } from "ws";
 import { serializeDaemonFrame } from "./protocol.js";
+import { log } from "../shared/logger.js";
 
 export interface HandlerDeps {
   projectRoot: string;
@@ -52,7 +53,7 @@ async function handleCmd(
     switch (frame.cmd) {
       case "ask": {
         const text = frame.args.text as string;
-        console.log(`[rue] ask: "${text.slice(0, 60)}${text.length > 60 ? "..." : ""}"`);
+        log.info(`[rue] ask: "${text.slice(0, 60)}${text.length > 60 ? "..." : ""}"`);
         const systemPrompt = deps.assembler.assemble(text);
         const workdir = (frame.args.workdir as string) ?? deps.projectRoot;
         const existingSessionId = sessionMap.get(ws) ?? lastSessionId;
@@ -192,12 +193,12 @@ async function handleCmd(
 
               if (isRateLimit(err) && attempt < MAX_RETRIES) {
                 const delay = Math.min(5000 * Math.pow(2, attempt), 60000); // 5s, 10s, 20s, 40s, 60s
-                console.log(`[rue] Rate limited (attempt ${attempt + 1}/${MAX_RETRIES + 1}), retrying in ${delay / 1000}s...`);
+                log.warn(`[rue] Rate limited (attempt ${attempt + 1}/${MAX_RETRIES + 1}), retrying in ${delay / 1000}s...`);
                 send({ type: "stream", agentId: "main", chunk: attempt === 0 ? "One moment..." : "" });
                 await sleep(delay);
               } else if (attempt === 0 && existingSessionId) {
                 // First attempt with resume failed (not rate limit) — retry fresh
-                console.error(`[rue] Session resume failed: ${errMsg}. Retrying fresh...`);
+                log.error(`[rue] Session resume failed: ${errMsg}. Retrying fresh...`);
               } else {
                 break; // non-retryable error
               }
@@ -210,13 +211,13 @@ async function handleCmd(
             send({ type: "result", id: frame.id, data: { output: result.allText, cost: result.cost } });
           } else {
             const errMsg = lastError instanceof Error ? lastError.message : String(lastError);
-            console.error(`[rue] All retries failed: ${errMsg}`);
+            log.error(`[rue] All retries failed: ${errMsg}`);
             send({ type: "stream", agentId: "main", chunk: "Sorry, I'm having trouble responding right now. Try again in a moment." });
             send({ type: "result", id: frame.id, data: { output: "Error: " + errMsg, cost: 0 } });
           }
         } catch (sdkError) {
           const message = sdkError instanceof Error ? sdkError.message : String(sdkError);
-          console.error(`[rue] SDK error: ${message}`);
+          log.error(`[rue] SDK error: ${message}`);
           send({ type: "error", id: frame.id, code: "SDK_ERROR", message });
         }
         break;

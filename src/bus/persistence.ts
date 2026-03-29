@@ -31,7 +31,13 @@ export class EventPersistence {
     if (this.fd === null) {
       this.fd = fs.openSync(this.filePath, "a");
     }
-    fs.writeSync(this.fd, line);
+    try {
+      fs.writeSync(this.fd, line);
+    } catch (err) {
+      fs.closeSync(this.fd);
+      this.fd = null;
+      throw err;
+    }
     return event;
   }
 
