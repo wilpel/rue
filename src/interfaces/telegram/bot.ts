@@ -139,61 +139,65 @@ export class TelegramBot {
       // Include Telegram context so Rue can react to messages
       const prompt = `[Telegram message from chat_id=${chatId} message_id=${messageId}]\n${text}`;
 
-      const askWithWatchdog = async (retry = false): Promise<void> => {
+      const askAndSend = async (retry = false): Promise<void> => {
         if (retry) this.disconnectClient(telegramId);
         const client = await this.getOrCreateClient(telegramId);
 
-        let buffer = "";
-        let sentAnything = false;
-        let flushTimer: NodeJS.Timeout | null = null;
+        let fullResponse = "";
         const typingInterval = setInterval(() => {
           ctx.sendChatAction("typing").catch(() => {});
         }, 4000);
 
-        const flush = async () => {
-          if (flushTimer) { clearTimeout(flushTimer); flushTimer = null; }
-          const toSend = buffer.trim();
-          if (toSend) {
-            buffer = "";
-            sentAnything = true;
-            await this.sendLongMessage(ctx, toSend).catch(() => {});
-          }
-        };
-
         try {
           const result = await client.ask(prompt, {
-            onStream: (chunk) => {
-              buffer += chunk;
-              if (buffer.includes("\n\n")) {
-                flush();
-              } else if (!flushTimer) {
-                flushTimer = setTimeout(() => flush(), 1500);
-              }
-            },
+            onStream: (chunk) => { fullResponse += chunk; },
           });
-
-          if (result.output && !sentAnything) {
-            buffer = result.output;
-          }
-          await flush();
-
-          if (!sentAnything) {
-            await ctx.reply("(no response)");
-          }
+          fullResponse = result.output || fullResponse;
         } finally {
-          if (flushTimer) clearTimeout(flushTimer);
           clearInterval(typingInterval);
+        }
+
+        if (!fullResponse.trim()) {
+          await ctx.reply("(no response)");
+          return;
+        }
+
+        // Split into logical chunks: separate by double-newline into paragraphs,
+        // then group small paragraphs together so we don't spam tiny messages.
+        // Aim for ~1-3 messages max.
+        const paragraphs = fullResponse.split(/\n\n+/).filter(p => p.trim());
+
+        if (paragraphs.length <= 2) {
+          // Short response — send as one message
+          await this.sendLongMessage(ctx, fullResponse.trim());
+        } else {
+          // Group paragraphs into chunks of ~2000 chars each
+          const chunks: string[] = [];
+          let current = "";
+          for (const para of paragraphs) {
+            if (current && (current.length + para.length + 2) > 2000) {
+              chunks.push(current.trim());
+              current = para;
+            } else {
+              current = current ? current + "\n\n" + para : para;
+            }
+          }
+          if (current.trim()) chunks.push(current.trim());
+
+          for (const chunk of chunks) {
+            await this.sendLongMessage(ctx, chunk);
+          }
         }
       };
 
       try {
         try {
-          await askWithWatchdog(false);
+          await askAndSend(false);
         } catch (firstErr) {
           const msg = firstErr instanceof Error ? firstErr.message : String(firstErr);
           console.log(`[telegram] First attempt failed for user ${telegramId}: ${msg}. Retrying...`);
           try {
-            await askWithWatchdog(true);
+            await askAndSend(true);
           } catch {
             // Both attempts failed — send error and clean up
             throw firstErr;

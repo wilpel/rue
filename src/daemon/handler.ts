@@ -70,7 +70,7 @@ async function handleCmd(
             options: {
               cwd: workdir,
               systemPrompt,
-              model: "sonnet",  // Use standard context (not 1M) to avoid rate limits
+              model: "opus",  // Use opus with standard 200k context (not 1M which has stricter rate limits)
               tools: ["Read", "Write", "Edit", "Bash", "Glob", "Grep", "WebSearch", "WebFetch", "Agent"],
               allowedTools: ["Read", "Write", "Edit", "Bash", "Glob", "Grep", "WebSearch", "WebFetch", "Agent"],
               permissionMode: "bypassPermissions",

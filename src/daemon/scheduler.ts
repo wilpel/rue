@@ -223,7 +223,7 @@ export class JobScheduler {
         prompt: `Execute this scheduled task now:\n\n${job.task}\n\nDo it and confirm briefly when done.`,
         options: {
           cwd: projectRoot,
-          model: "sonnet",
+          model: "opus",
           systemPrompt: `You are Rue executing a scheduled job called "${job.name}". Do exactly what the task says. Use the available tools (Bash, Read, Write, etc.) to complete it. Be quick and direct. If the task says to send a Telegram message, use: node --import tsx/esm skills/telegram/run.ts send --message "..."`,
           tools: ["Read", "Write", "Edit", "Bash", "Glob", "Grep", "WebSearch", "WebFetch"],
           allowedTools: ["Read", "Write", "Edit", "Bash", "Glob", "Grep", "WebSearch", "WebFetch"],
