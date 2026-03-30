@@ -150,7 +150,10 @@ export class TelegramBot {
     const flush = async () => {
       const text = buffer.replace(/\[no_?response\]/gi, "").trim();
       buffer = "";
-      if (text) await sendMessage(text);
+      if (text) {
+        console.log(`[telegram] Flushing burst to ${telegramId}: "${text.slice(0, 80)}"`);
+        await sendMessage(text);
+      }
     };
 
     const onChunk = (chunk: string) => {
