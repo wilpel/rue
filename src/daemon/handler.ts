@@ -30,6 +30,36 @@ const sessionMap = new WeakMap<WebSocket, string>();
 let lastSessionId: string | undefined;
 let lastSessionTime = 0;
 
+// Track active AbortControllers per WebSocket so we can abort on disconnect
+const activeAbortControllers = new WeakMap<WebSocket, Set<AbortController>>();
+
+// Track bus unsubscribe functions per WebSocket for cleanup on disconnect
+const wsUnsubscribers = new WeakMap<WebSocket, Array<() => void>>();
+
+function trackAbortController(ws: WebSocket, ac: AbortController): void {
+  let set = activeAbortControllers.get(ws);
+  if (!set) { set = new Set(); activeAbortControllers.set(ws, set); }
+  set.add(ac);
+}
+
+function untrackAbortController(ws: WebSocket, ac: AbortController): void {
+  activeAbortControllers.get(ws)?.delete(ac);
+}
+
+/** Abort all active queries and remove bus listeners for a disconnected WebSocket */
+export function cleanupWebSocket(ws: WebSocket): void {
+  const controllers = activeAbortControllers.get(ws);
+  if (controllers) {
+    for (const ac of controllers) ac.abort();
+    controllers.clear();
+  }
+  const unsubs = wsUnsubscribers.get(ws);
+  if (unsubs) {
+    for (const unsub of unsubs) unsub();
+    unsubs.length = 0;
+  }
+}
+
 export function createHandler(deps: HandlerDeps) {
   return async (frame: ClientFrame, ws: WebSocket): Promise<void> => {
     switch (frame.type) {
@@ -71,8 +101,18 @@ async function handleCmd(
         deps.bus.emit("message:created", { id: "", role: "user", content: text, timestamp: Date.now() });
 
         // Try with session resume first, fall back to fresh session on failure
+        const QUERY_TIMEOUT_MS = 300_000; // 5 min hard timeout per query
+
         const runQuery = async (resumeId: string | undefined) => {
           const { query } = await import("@anthropic-ai/claude-agent-sdk");
+
+          const abortController = new AbortController();
+          trackAbortController(ws, abortController);
+
+          // Hard timeout: abort the query if it runs too long
+          const timeoutTimer = setTimeout(() => {
+            if (!abortController.signal.aborted) abortController.abort();
+          }, QUERY_TIMEOUT_MS);
 
           const q = query({
             prompt: text,
@@ -85,7 +125,7 @@ async function handleCmd(
               permissionMode: "bypassPermissions",
               allowDangerouslySkipPermissions: true,
               maxTurns: 8,  // Keep main agent responsive — heavy work goes to sub-agents
-              abortController: new AbortController(),
+              abortController,
               includePartialMessages: true,
               settingSources: [],
               ...(resumeId ? { resume: resumeId } : {}),
@@ -169,6 +209,9 @@ async function handleCmd(
               }
             }
           }
+
+          clearTimeout(timeoutTimer);
+          untrackAbortController(ws, abortController);
 
           if (!gotAnyMessage) throw new Error("No response from SDK");
 
@@ -293,11 +336,17 @@ function handleSubscribe(
   ws: WebSocket,
   bus: EventBus,
 ): void {
+  let unsubs = wsUnsubscribers.get(ws);
+  if (!unsubs) { unsubs = []; wsUnsubscribers.set(ws, unsubs); }
+
   for (const channel of frame.channels) {
     if (channel.endsWith("*")) {
-      bus.onWildcard(channel, (ch, payload) => {
-        ws.send(serializeDaemonFrame({ type: "event", channel: ch, payload }));
+      const unsub = bus.onWildcard(channel, (ch, payload) => {
+        if (ws.readyState === ws.OPEN) {
+          ws.send(serializeDaemonFrame({ type: "event", channel: ch, payload }));
+        }
       });
+      unsubs.push(unsub);
     }
   }
 }

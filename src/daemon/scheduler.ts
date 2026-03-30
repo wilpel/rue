@@ -121,12 +121,17 @@ export class JobScheduler {
     this.tick();
   }
 
-  /** Stop the polling loop and close the database. */
+  /** Stop the polling loop, abort running jobs, and close the database. */
   stop(): void {
     if (this.timer) {
       clearInterval(this.timer);
       this.timer = null;
     }
+    // Abort all running job agents
+    for (const ac of this.activeJobAbortControllers) {
+      ac.abort();
+    }
+    this.activeJobAbortControllers.clear();
     if (this.db) {
       this.db.close();
       this.db = null;
@@ -210,8 +215,22 @@ export class JobScheduler {
     return row.cnt;
   }
 
+  private static readonly JOB_TIMEOUT_MS = 300_000; // 5 min hard timeout per job
+  private activeJobAbortControllers = new Set<AbortController>();
+
   /** Spawn a lightweight agent to execute a scheduled job's task. */
   private async spawnJobAgent(job: Job): Promise<void> {
+    const abortController = new AbortController();
+    this.activeJobAbortControllers.add(abortController);
+
+    // Hard timeout: abort the job if it runs too long
+    const timeoutTimer = setTimeout(() => {
+      if (!abortController.signal.aborted) {
+        console.warn(`[scheduler] Job "${job.name}" timed out after ${JobScheduler.JOB_TIMEOUT_MS / 1000}s — aborting`);
+        abortController.abort();
+      }
+    }, JobScheduler.JOB_TIMEOUT_MS);
+
     try {
       const { query } = await import("@anthropic-ai/claude-agent-sdk");
       const { fileURLToPath } = await import("node:url");
@@ -230,6 +249,7 @@ export class JobScheduler {
           permissionMode: "bypassPermissions" as const,
           allowDangerouslySkipPermissions: true,
           maxTurns: 10,
+          abortController,
           settingSources: [],
         },
       });
@@ -251,6 +271,9 @@ export class JobScheduler {
       console.log(`[scheduler] Job "${job.name}" completed: ${output.slice(0, 100)}`);
     } catch (err) {
       console.error(`[scheduler] Job "${job.name}" failed: ${err instanceof Error ? err.message : err}`);
+    } finally {
+      clearTimeout(timeoutTimer);
+      this.activeJobAbortControllers.delete(abortController);
     }
   }
 }

@@ -11,7 +11,7 @@ import { UserModel } from "../cortex/limbic/identity/user-model.js";
 import { ContextAssembler } from "../cortex/limbic/memory/assembler.js";
 import { EventPersistence } from "../bus/persistence.js";
 import { MessageStore } from "../messages/store.js";
-import { createHandler } from "./handler.js";
+import { createHandler, cleanupWebSocket } from "./handler.js";
 import { parseClientFrame, serializeDaemonFrame } from "./protocol.js";
 import * as path from "node:path";
 import * as fs from "node:fs";
@@ -107,6 +107,10 @@ export class DaemonServer {
       let messageCount = 0;
       let lastReset = Date.now();
 
+      // Clean up all resources (abort controllers, bus listeners) when WS closes
+      ws.on("close", () => cleanupWebSocket(ws));
+      ws.on("error", () => cleanupWebSocket(ws));
+
       ws.on("message", async (data) => {
         // Rate limit: max 30 messages per minute per connection
         const now = Date.now();
@@ -196,6 +200,11 @@ export class DaemonServer {
     this.scheduler.stop();
     if (this.telegramBot) await this.telegramBot.stop();
     this.supervisor.shutdown();
+    // Abort all running project agents
+    for (const ac of this.activeProjectAbortControllers) ac.abort();
+    this.activeProjectAbortControllers.clear();
+    // Clear all event bus listeners to prevent leaked references
+    this.bus.removeAllListeners();
     this.semantic.close();
     this.messages.close();
     this.persistence.close();
@@ -612,6 +621,8 @@ export class DaemonServer {
   private _taskWatcher: NodeJS.Timeout | null = null;
 
   private activeProjectAgents = new Set<string>(); // track running agents by "project:taskFile"
+  private activeProjectAbortControllers = new Set<AbortController>(); // abort on shutdown
+  private static readonly PROJECT_AGENT_TIMEOUT_MS = 600_000; // 10 min hard timeout
 
   private startTaskWatcher(): void {
     // Scan all projects for todo tasks every 10 seconds
@@ -762,6 +773,17 @@ ${projectPrompt ? "## Project-Specific Instructions\n\n" + projectPrompt : ""}`;
     await logActivity("started", `Working on: ${taskDescription}`);
 
     // Spawn the agent via Claude SDK
+    const abortController = new AbortController();
+    this.activeProjectAbortControllers.add(abortController);
+
+    // Hard timeout: abort project agent if it runs too long
+    const timeoutTimer = setTimeout(() => {
+      if (!abortController.signal.aborted) {
+        log.warn(`[rue] Project agent "${projectName}" timed out after ${DaemonServer.PROJECT_AGENT_TIMEOUT_MS / 1000}s — aborting`);
+        abortController.abort();
+      }
+    }, DaemonServer.PROJECT_AGENT_TIMEOUT_MS);
+
     try {
       const { query } = await import("@anthropic-ai/claude-agent-sdk");
 
@@ -784,6 +806,7 @@ ${projectPrompt ? "## Project-Specific Instructions\n\n" + projectPrompt : ""}`;
           permissionMode: "bypassPermissions",
           allowDangerouslySkipPermissions: true,
           maxTurns: 30,
+          abortController,
           settingSources: [],
         },
       });
@@ -847,6 +870,9 @@ ${projectPrompt ? "## Project-Specific Instructions\n\n" + projectPrompt : ""}`;
       this.bus.emit("agent:failed", { id: `project-${projectName}`, error: errMsg, retryable: false });
       this.healthMonitor.untrackAgent(agentId);
       await logActivity("failed", errMsg);
+    } finally {
+      clearTimeout(timeoutTimer);
+      this.activeProjectAbortControllers.delete(abortController);
     }
   }
 }
