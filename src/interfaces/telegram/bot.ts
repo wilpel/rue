@@ -148,7 +148,7 @@ export class TelegramBot {
     let sentFirst = false;
     // After the first message is sent, use a longer delay for follow-ups
     // since tool execution gaps can be long.
-    const FIRST_FLUSH_MS = 3000;  // wait 3s to collect the initial acknowledgment
+    const FIRST_FLUSH_MS = 8000;  // wait 8s to collect the full initial response (ack + context)
     const LATER_FLUSH_MS = 8000;  // 8s pause = likely a new text section after tool work
 
     const flush = async () => {
