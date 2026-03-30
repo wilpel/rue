@@ -337,7 +337,9 @@ export function createCLI(): Command {
     .command("validate [name]")
     .description("Validate a skill's structure")
     .action(async (name?: string) => {
-      const skillsDir = path.join(path.resolve(__dirname, "..", "..", ".."), "skills");
+      const { fileURLToPath } = await import("node:url");
+      const thisDir = path.dirname(fileURLToPath(import.meta.url));
+      const skillsDir = path.join(path.resolve(thisDir, "..", "..", ".."), "skills");
       if (!fs.existsSync(skillsDir)) {
         console.error("No skills/ directory found.");
         process.exit(1);
