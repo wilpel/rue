@@ -443,6 +443,7 @@ export class DaemonServer {
           startedAt: info.startedAt,
           runningFor: info.status === "running" ? Math.round((Date.now() - info.startedAt) / 1000) + "s" : undefined,
           result: info.result?.slice(0, 200),
+          activity: info.activity,
         }));
         json({ agents });
         return;
@@ -454,7 +455,7 @@ export class DaemonServer {
         const id = decodeURIComponent(delegateMatch[1]);
         const info = this.delegateAgents.get(id);
         if (!info) { json({ error: "Agent not found" }, 404); return; }
-        json({ id, ...info, runningFor: info.status === "running" ? Math.round((Date.now() - info.startedAt) / 1000) + "s" : undefined });
+        json({ id, task: info.task, status: info.status, startedAt: info.startedAt, runningFor: info.status === "running" ? Math.round((Date.now() - info.startedAt) / 1000) + "s" : undefined, result: info.result, activity: info.activity });
         return;
       }
 
@@ -467,7 +468,7 @@ export class DaemonServer {
             const { task, chatId, messageId } = JSON.parse(body);
             if (!task || !chatId) { json({ error: "task and chatId required" }, 400); return; }
             const agentId = `delegate-${Date.now()}`;
-            this.delegateAgents.set(agentId, { task, status: "running", startedAt: Date.now() });
+            this.delegateAgents.set(agentId, { task, status: "running", startedAt: Date.now(), activity: [] });
             this.spawnDelegatedTask(agentId, task, chatId, messageId)
               .catch(err => log.error(`[delegate] Agent ${agentId} failed`, { error: err instanceof Error ? err.message : err }));
             json({ ok: true, agentId });
@@ -669,7 +670,7 @@ export class DaemonServer {
   private _taskWatcher: NodeJS.Timeout | null = null;
 
   private activeProjectAgents = new Set<string>(); // track running agents by "project:taskFile"
-  private delegateAgents = new Map<string, { task: string; status: string; startedAt: number; result?: string }>(); // track delegate agents
+  private delegateAgents = new Map<string, { task: string; status: string; startedAt: number; result?: string; activity: string[] }>(); // track delegate agents
   private activeProjectAbortControllers = new Set<AbortController>(); // abort on shutdown
   private static readonly PROJECT_AGENT_TIMEOUT_MS = 600_000; // 10 min hard timeout
 
@@ -967,11 +968,25 @@ Be concise but complete. Format nicely for Telegram (plain text, no markdown hea
       });
 
       let output = "";
+      const tracking = this.delegateAgents.get(agentId);
       for await (const message of q) {
         if (message.type === "assistant") {
           const assistantMsg = message as SDKAssistantMessage;
           for (const block of assistantMsg.message.content) {
-            if (block.type === "text") output += (block as { type: "text"; text: string }).text;
+            if (block.type === "text") {
+              const text = (block as { type: "text"; text: string }).text;
+              output += text;
+              if (tracking && text.trim()) tracking.activity.push(`text: ${text.trim().slice(0, 100)}`);
+            }
+            if (block.type === "tool_use") {
+              const tool = block as { type: "tool_use"; name: string; input?: Record<string, unknown> };
+              const summary = tool.name === "Bash" ? `Bash: ${String(tool.input?.command ?? "").slice(0, 80)}`
+                : tool.name === "WebSearch" ? `WebSearch: ${String(tool.input?.query ?? "").slice(0, 80)}`
+                : tool.name === "WebFetch" ? `WebFetch: ${String(tool.input?.url ?? "").slice(0, 80)}`
+                : tool.name === "Read" ? `Read: ${String(tool.input?.file_path ?? "").slice(0, 80)}`
+                : `${tool.name}`;
+              if (tracking) tracking.activity.push(summary);
+            }
           }
         }
         if (message.type === "result") {
@@ -988,14 +1003,16 @@ Be concise but complete. Format nicely for Telegram (plain text, no markdown hea
         log.info(`[delegate] Agent ${agentId} completed, sent ${output.length} chars to chat ${chatId}`);
       }
 
-      this.delegateAgents.set(agentId, { task: this.delegateAgents.get(agentId)?.task ?? "", status: "completed", startedAt: this.delegateAgents.get(agentId)?.startedAt ?? Date.now(), result: output.slice(0, 1000) });
+      const prev = this.delegateAgents.get(agentId);
+      this.delegateAgents.set(agentId, { task: prev?.task ?? "", status: "completed", startedAt: prev?.startedAt ?? Date.now(), result: output.slice(0, 1000), activity: prev?.activity ?? [] });
       this.bus.emit("agent:completed", { id: agentId, result: output.slice(0, 200), cost: 0 });
       this.healthMonitor.untrackAgent(agentId);
 
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : String(err);
       log.error(`[delegate] Agent ${agentId} failed: ${errMsg}`);
-      this.delegateAgents.set(agentId, { task: this.delegateAgents.get(agentId)?.task ?? "", status: "failed", startedAt: this.delegateAgents.get(agentId)?.startedAt ?? Date.now(), result: errMsg });
+      const prev = this.delegateAgents.get(agentId);
+      this.delegateAgents.set(agentId, { task: prev?.task ?? "", status: "failed", startedAt: prev?.startedAt ?? Date.now(), result: errMsg, activity: prev?.activity ?? [] });
       await this.sendTelegramResult(chatId, "Sorry, I ran into an issue with that task. Try again?", messageId).catch(() => {});
       this.bus.emit("agent:failed", { id: agentId, error: errMsg, retryable: false });
       this.healthMonitor.untrackAgent(agentId);

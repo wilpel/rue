@@ -83,7 +83,12 @@ if (command === "spawn") {
       console.log(`Task: ${data.task}`);
       console.log(`Status: ${data.status}`);
       if (data.runningFor) console.log(`Running for: ${data.runningFor}`);
-      if (data.result) console.log(`Result: ${(data.result as string).slice(0, 300)}`);
+      const activity = (data.activity ?? []) as string[];
+      if (activity.length > 0) {
+        console.log(`Activity (${activity.length} steps):`);
+        for (const a of activity) console.log(`  - ${a}`);
+      }
+      if (data.result) console.log(`Result: ${(data.result as string).slice(0, 500)}`);
     } else {
       // All agents
       const agents = (data.agents ?? []) as Array<Record<string, unknown>>;
@@ -92,7 +97,9 @@ if (command === "spawn") {
       } else {
         for (const a of agents) {
           const status = a.status === "running" ? `running (${a.runningFor})` : a.status;
-          console.log(`[${a.id}] ${status} — ${(a.task as string).slice(0, 80)}`);
+          const activity = (a.activity ?? []) as string[];
+          const lastStep = activity.length > 0 ? ` | last: ${activity[activity.length - 1]}` : "";
+          console.log(`[${a.id}] ${status} — ${(a.task as string).slice(0, 80)}${lastStep}`);
           if (a.result) console.log(`  Result: ${(a.result as string).slice(0, 150)}`);
         }
       }
