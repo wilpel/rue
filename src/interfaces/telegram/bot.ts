@@ -19,10 +19,20 @@ export class TelegramBot {
   private processingUsers = new Set<number>();
 
   constructor(config: TelegramBotConfig) {
-    this.bot = new Telegraf(config.botToken);
+    this.bot = new Telegraf(config.botToken, {
+      // Default is 90s which is too short for SDK queries.
+      // Our own askWithTimeout (180s) handles the real timeout.
+      handlerTimeout: 300_000,
+    });
     this.store = new TelegramStore(config.dataDir);
     this.daemonUrl = config.daemonUrl;
     this.setupHandlers();
+
+    // Prevent unhandled errors from crashing the bot
+    this.bot.catch((err: unknown) => {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error(`[telegram] Bot error (recovered): ${msg}`);
+    });
   }
 
   getStore(): TelegramStore { return this.store; }
@@ -97,6 +107,7 @@ export class TelegramBot {
 
         try {
           const response = await this.askWithTimeout(telegramId, prompt, 180_000); // 3 min max
+          console.log(`[telegram] Raw response for ${telegramId}: "${(response ?? "").slice(0, 120)}"`);
 
           if (!response || response === "[no_response]" || response.toLowerCase() === "[no response]") return;
           const cleaned = response.replace(/\[no_?response\]/gi, "").trim();
