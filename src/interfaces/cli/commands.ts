@@ -3,6 +3,7 @@ import { DaemonClient } from "./client.js";
 import { DaemonServer } from "../../daemon/server.js";
 import { loadConfig } from "../../shared/config.js";
 import { TelegramStore } from "../telegram/store.js";
+import * as fs from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
 
@@ -327,6 +328,45 @@ export function createCLI(): Command {
       console.log("Daemon: stopped");
     }
   });
+
+  // ── Skills commands ──────────────────────────────────────────
+
+  const skills = program.command("skills").description("Manage skills");
+
+  skills
+    .command("validate [name]")
+    .description("Validate a skill's structure")
+    .action(async (name?: string) => {
+      const skillsDir = path.join(path.resolve(__dirname, "..", "..", ".."), "skills");
+      if (!fs.existsSync(skillsDir)) {
+        console.error("No skills/ directory found.");
+        process.exit(1);
+      }
+      const dirs = name
+        ? [name]
+        : fs.readdirSync(skillsDir).filter(d => fs.statSync(path.join(skillsDir, d)).isDirectory());
+
+      let errors = 0;
+      for (const dir of dirs) {
+        const skillPath = path.join(skillsDir, dir);
+        const hasSkillMd = fs.existsSync(path.join(skillPath, "SKILL.md"));
+        const hasRunTs = fs.existsSync(path.join(skillPath, "run.ts"));
+
+        if (!hasSkillMd) { console.log(`  ✗ ${dir}: missing SKILL.md`); errors++; }
+        else if (!hasRunTs) { console.log(`  ✗ ${dir}: missing run.ts`); errors++; }
+        else {
+          const skillMd = fs.readFileSync(path.join(skillPath, "SKILL.md"), "utf-8");
+          const hasUsage = skillMd.includes("## Usage");
+          const hasWhenToUse = skillMd.includes("## When to use");
+          if (!hasUsage || !hasWhenToUse) {
+            console.log(`  ⚠ ${dir}: SKILL.md missing sections (Usage: ${hasUsage}, When to use: ${hasWhenToUse})`);
+          } else {
+            console.log(`  ✓ ${dir}`);
+          }
+        }
+      }
+      if (errors > 0) process.exit(1);
+    });
 
   return program;
 }

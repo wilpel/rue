@@ -204,17 +204,20 @@ export class TelegramBot {
     if (this.processingUsers.has(userId)) return;
     this.processingUsers.add(userId);
 
-    while (this.messageQueues.get(userId)?.length) {
-      const next = this.messageQueues.get(userId)!.shift()!;
-      try {
-        await next();
-      } catch (err) {
-        console.error(`[telegram] Queue error for ${userId}:`, err instanceof Error ? err.message : err);
+    try {
+      while (this.messageQueues.get(userId)?.length) {
+        const next = this.messageQueues.get(userId)!.shift()!;
+        try {
+          await next();
+        } catch (err) {
+          console.error(`[telegram] Queue error for ${userId}:`, err instanceof Error ? err.message : err);
+        }
       }
+    } finally {
+      // ALWAYS clean up — prevents queue from jamming permanently
+      this.processingUsers.delete(userId);
+      this.messageQueues.delete(userId);
     }
-
-    this.processingUsers.delete(userId);
-    this.messageQueues.delete(userId);
   }
 
   private async sendLongMessage(

@@ -43,17 +43,36 @@ export class TelegramStore {
   }
 
   getBotToken(): string | undefined {
-    // Check env var first
+    // 1. Environment variable
     if (process.env.TELEGRAM_BOT_TOKEN) return process.env.TELEGRAM_BOT_TOKEN;
-    // Fall back to config file
+
+    // 2. Try encrypted vault
+    try {
+      const { execSync } = require("node:child_process");
+      const vaultPath = require("node:path").join(require("node:os").homedir(), ".rue", "vault.enc");
+      const fs = require("node:fs");
+      if (fs.existsSync(vaultPath)) {
+        const result = execSync("node --import tsx/esm skills/secrets/run.ts get --key TELEGRAM_BOT_TOKEN 2>/dev/null", { encoding: "utf-8", cwd: process.cwd() }).trim();
+        if (result) return result;
+      }
+    } catch { /* vault not available or key not found */ }
+
+    // 3. Fall back to plain config (legacy)
     const config = this.load();
     return config.botToken;
   }
 
   setBotToken(token: string): void {
+    // Store in plain config (legacy)
     const config = this.load();
     config.botToken = token;
     this.save(config);
+
+    // Also try to store in vault
+    try {
+      const { execSync } = require("node:child_process");
+      execSync(`node --import tsx/esm skills/secrets/run.ts set --key TELEGRAM_BOT_TOKEN --value "${token}"`, { encoding: "utf-8", cwd: process.cwd() });
+    } catch { /* vault not available */ }
   }
 
   getPairedUsers(): PairedUser[] {

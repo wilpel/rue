@@ -147,10 +147,36 @@ export class DaemonServer {
     this.bus.emit("system:started", {});
     log.info("[rue] Bus + scheduler started");
 
+    // Sync identity from MEMORY.md if available
+    try {
+      const memPath = path.join(os.homedir(), ".rue", "memory", "MEMORY.md");
+      if (fs.existsSync(memPath)) {
+        const mem = fs.readFileSync(memPath, "utf-8");
+        const nameMatch = mem.match(/User's name is (\w+)/i) || mem.match(/name:\s*(\w+)/i);
+        if (nameMatch && !this.identity.getState().name) {
+          this.identity.update({ name: nameMatch[1] });
+          this.identity.save();
+        }
+      }
+    } catch {}
+
+    // Sync user model from MEMORY.md if available
+    try {
+      const memPath = path.join(os.homedir(), ".rue", "memory", "MEMORY.md");
+      if (fs.existsSync(memPath)) {
+        const mem = fs.readFileSync(memPath, "utf-8");
+        const nameMatch = mem.match(/User's name is (\w+)/i);
+        if (nameMatch && !this.userModel.getProfile().name) {
+          this.userModel.update({ name: nameMatch[1] });
+          this.userModel.save();
+        }
+      }
+    } catch {}
+
     // Start Telegram bot if configured (non-blocking)
     this.startTelegramBot().catch(err => log.error("[rue] Telegram start failed", { error: err }));
     await new Promise<void>((resolve) => {
-      this.httpServer!.listen(this.config.port, resolve);
+      this.httpServer!.listen(this.config.port, "127.0.0.1", resolve);
     });
   }
 

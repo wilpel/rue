@@ -18,6 +18,8 @@ export class ContextAssembler {
   private systemPromptCache: string | null = null;
   private personalityCache: string | null = null;
   private skillsCache: string | null = null;
+  private cacheTime = 0;
+  private readonly CACHE_TTL = 300_000; // 5 minutes
 
   constructor(private readonly deps: AssemblerDeps) {}
 
@@ -29,6 +31,14 @@ export class ContextAssembler {
   }
 
   assemble(task: string): string {
+    // Refresh cache every 5 minutes
+    if (Date.now() - this.cacheTime > this.CACHE_TTL) {
+      this.systemPromptCache = null;
+      this.personalityCache = null;
+      this.skillsCache = null;
+      this.cacheTime = Date.now();
+    }
+
     const sections: string[] = [];
 
     // Load prompts/SYSTEM.md — the primary system guide (cached after first read)
