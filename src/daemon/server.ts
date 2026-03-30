@@ -434,6 +434,30 @@ export class DaemonServer {
         return;
       }
 
+      // GET /api/delegates — list all delegate agents and their status
+      if (pathname === "/api/delegates" && req.method === "GET") {
+        const agents = Array.from(this.delegateAgents.entries()).map(([id, info]) => ({
+          id,
+          task: info.task,
+          status: info.status,
+          startedAt: info.startedAt,
+          runningFor: info.status === "running" ? Math.round((Date.now() - info.startedAt) / 1000) + "s" : undefined,
+          result: info.result?.slice(0, 200),
+        }));
+        json({ agents });
+        return;
+      }
+
+      // GET /api/delegates/:id — get a specific delegate agent
+      const delegateMatch = pathname.match(/^\/api\/delegates\/([^/]+)$/);
+      if (delegateMatch && req.method === "GET") {
+        const id = decodeURIComponent(delegateMatch[1]);
+        const info = this.delegateAgents.get(id);
+        if (!info) { json({ error: "Agent not found" }, 404); return; }
+        json({ id, ...info, runningFor: info.status === "running" ? Math.round((Date.now() - info.startedAt) / 1000) + "s" : undefined });
+        return;
+      }
+
       // POST /api/delegate — spawn background agent, send result via Telegram
       if (pathname === "/api/delegate" && req.method === "POST") {
         let body = "";
@@ -443,7 +467,7 @@ export class DaemonServer {
             const { task, chatId, messageId } = JSON.parse(body);
             if (!task || !chatId) { json({ error: "task and chatId required" }, 400); return; }
             const agentId = `delegate-${Date.now()}`;
-            // Fire-and-forget: spawn in background, send result via Telegram when done
+            this.delegateAgents.set(agentId, { task, status: "running", startedAt: Date.now() });
             this.spawnDelegatedTask(agentId, task, chatId, messageId)
               .catch(err => log.error(`[delegate] Agent ${agentId} failed`, { error: err instanceof Error ? err.message : err }));
             json({ ok: true, agentId });
@@ -645,6 +669,7 @@ export class DaemonServer {
   private _taskWatcher: NodeJS.Timeout | null = null;
 
   private activeProjectAgents = new Set<string>(); // track running agents by "project:taskFile"
+  private delegateAgents = new Map<string, { task: string; status: string; startedAt: number; result?: string }>(); // track delegate agents
   private activeProjectAbortControllers = new Set<AbortController>(); // abort on shutdown
   private static readonly PROJECT_AGENT_TIMEOUT_MS = 600_000; // 10 min hard timeout
 
@@ -963,19 +988,22 @@ Be concise but complete. Format nicely for Telegram (plain text, no markdown hea
         log.info(`[delegate] Agent ${agentId} completed, sent ${output.length} chars to chat ${chatId}`);
       }
 
+      this.delegateAgents.set(agentId, { task: this.delegateAgents.get(agentId)?.task ?? "", status: "completed", startedAt: this.delegateAgents.get(agentId)?.startedAt ?? Date.now(), result: output.slice(0, 1000) });
       this.bus.emit("agent:completed", { id: agentId, result: output.slice(0, 200), cost: 0 });
       this.healthMonitor.untrackAgent(agentId);
 
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : String(err);
       log.error(`[delegate] Agent ${agentId} failed: ${errMsg}`);
-      // Notify user of failure
+      this.delegateAgents.set(agentId, { task: this.delegateAgents.get(agentId)?.task ?? "", status: "failed", startedAt: this.delegateAgents.get(agentId)?.startedAt ?? Date.now(), result: errMsg });
       await this.sendTelegramResult(chatId, "Sorry, I ran into an issue with that task. Try again?", messageId).catch(() => {});
       this.bus.emit("agent:failed", { id: agentId, error: errMsg, retryable: false });
       this.healthMonitor.untrackAgent(agentId);
     } finally {
       clearTimeout(timeoutTimer);
       this.activeProjectAbortControllers.delete(abortController);
+      // Clean up old completed/failed entries after 10 minutes
+      setTimeout(() => this.delegateAgents.delete(agentId), 600_000);
     }
   }
 

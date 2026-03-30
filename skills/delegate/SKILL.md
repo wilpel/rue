@@ -21,6 +21,15 @@ node --import tsx/esm skills/delegate/run.ts spawn \
 - `--chat-id` (required) — Telegram chat ID to send the result to.
 - `--message-id` (optional) — Message ID to reply to.
 
+### Check status of delegate agents
+
+```bash
+node --import tsx/esm skills/delegate/run.ts status
+node --import tsx/esm skills/delegate/run.ts status --id delegate-1234567890
+```
+
+Shows all running/completed/failed delegate agents, how long they've been running, and result previews.
+
 ### How it works
 
 1. The skill POSTs to the daemon's `/api/delegate` endpoint

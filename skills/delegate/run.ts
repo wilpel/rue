@@ -65,6 +65,44 @@ if (command === "spawn") {
     console.error(`Failed to reach daemon: ${err instanceof Error ? err.message : err}`);
     process.exit(1);
   }
+} else if (command === "status") {
+  const agentId = getArg("id");
+  const config = loadConfig();
+
+  try {
+    const url = agentId
+      ? `http://127.0.0.1:${config.port}/api/delegates/${encodeURIComponent(agentId)}`
+      : `http://127.0.0.1:${config.port}/api/delegates`;
+
+    const res = await fetch(url);
+    const data = await res.json() as Record<string, unknown>;
+
+    if (agentId) {
+      // Single agent
+      console.log(`Agent: ${data.id}`);
+      console.log(`Task: ${data.task}`);
+      console.log(`Status: ${data.status}`);
+      if (data.runningFor) console.log(`Running for: ${data.runningFor}`);
+      if (data.result) console.log(`Result: ${(data.result as string).slice(0, 300)}`);
+    } else {
+      // All agents
+      const agents = (data.agents ?? []) as Array<Record<string, unknown>>;
+      if (agents.length === 0) {
+        console.log("No delegate agents (running or recent).");
+      } else {
+        for (const a of agents) {
+          const status = a.status === "running" ? `running (${a.runningFor})` : a.status;
+          console.log(`[${a.id}] ${status} — ${(a.task as string).slice(0, 80)}`);
+          if (a.result) console.log(`  Result: ${(a.result as string).slice(0, 150)}`);
+        }
+      }
+    }
+  } catch (err) {
+    console.error(`Failed to reach daemon: ${err instanceof Error ? err.message : err}`);
+    process.exit(1);
+  }
 } else {
-  console.log("Usage: delegate spawn --task \"...\" --chat-id 12345 [--message-id 67890]");
+  console.log("Usage:");
+  console.log("  delegate spawn  --task \"...\" --chat-id 12345 [--message-id 67890]");
+  console.log("  delegate status [--id <agent-id>]");
 }
