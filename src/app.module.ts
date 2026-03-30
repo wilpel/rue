@@ -4,6 +4,11 @@ import { DatabaseModule } from "./database/database.module.js";
 import { BusModule } from "./bus/bus.module.js";
 import { IdentityModule } from "./identity/identity.module.js";
 import { MemoryModule } from "./memory/memory.module.js";
+import { InboxModule } from "./inbox/inbox.module.js";
+import { AgentsModule } from "./agents/agents.module.js";
+import { GatewayModule } from "./gateway/gateway.module.js";
+import { ApiModule } from "./api/api.module.js";
+import { TelegramModule } from "./telegram/telegram.module.js";
 
 @Module({
   imports: [
@@ -12,6 +17,11 @@ import { MemoryModule } from "./memory/memory.module.js";
     BusModule,
     IdentityModule,
     MemoryModule,
+    InboxModule,
+    AgentsModule,
+    GatewayModule,
+    ApiModule,
+    TelegramModule,
   ],
 })
 export class AppModule {}
