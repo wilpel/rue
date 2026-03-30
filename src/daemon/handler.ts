@@ -84,7 +84,7 @@ async function handleCmd(
               allowedTools: ["Read", "Write", "Edit", "Bash", "Glob", "Grep", "WebSearch", "WebFetch", "Agent"],
               permissionMode: "bypassPermissions",
               allowDangerouslySkipPermissions: true,
-              maxTurns: 50,
+              maxTurns: 8,  // Keep main agent responsive — heavy work goes to sub-agents
               abortController: new AbortController(),
               includePartialMessages: true,
               settingSources: [],
