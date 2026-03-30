@@ -50,6 +50,7 @@ export class DaemonServer {
   private telegramBot: TelegramBot | null = null;
   private scheduler: JobScheduler;
   private healthMonitor: HealthMonitor;
+  private _memorySaveInterval: NodeJS.Timeout | null = null;
 
   constructor(private readonly config: DaemonServerConfig) {
     this.bus = new EventBus();
@@ -98,6 +99,9 @@ export class DaemonServer {
       planner: this.planner,
       assembler: this.assembler,
       messages: this.messages,
+      identity: this.identity,
+      userModel: this.userModel,
+      semanticMemory: this.semantic,
     });
 
     this.wss.on("connection", (ws: WebSocket) => {
@@ -144,6 +148,12 @@ export class DaemonServer {
     this.bus.emit("system:started", {});
     log.info("[rue] Bus + scheduler started");
 
+    // Auto-save identity, user model, and working memory every 60s
+    this._memorySaveInterval = setInterval(() => {
+      try { this.identity.save(); this.userModel.save(); } catch {}
+      try { fs.writeFileSync(snapshotPath, this.working.toSnapshot()); } catch {}
+    }, 60_000);
+
     // Start Telegram bot if configured (non-blocking)
     this.startTelegramBot().catch(err => log.error("[rue] Telegram start failed", { error: err }));
     await new Promise<void>((resolve) => {
@@ -154,9 +164,13 @@ export class DaemonServer {
   async stop(): Promise<void> {
     this.bus.emit("system:shutdown", { reason: "shutdown requested" });
 
-    // Persist working memory snapshot before shutdown
+    // Stop periodic memory saves
+    if (this._memorySaveInterval) clearInterval(this._memorySaveInterval);
+
+    // Final save of all memory state before shutdown
     const snapshotPath = path.join(this.config.dataDir, "working-memory.json");
-    fs.writeFileSync(snapshotPath, this.working.toSnapshot());
+    try { fs.writeFileSync(snapshotPath, this.working.toSnapshot()); } catch {}
+    try { this.identity.save(); this.userModel.save(); } catch {}
 
     if (this._taskWatcher) clearInterval(this._taskWatcher);
     this.healthMonitor.stop();
