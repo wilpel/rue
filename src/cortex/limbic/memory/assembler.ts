@@ -87,6 +87,12 @@ export class ContextAssembler {
       sections.push(`## Knowledge\n${semanticText}`);
     }
 
+    // Knowledge base — load relevant pages from ~/.rue/kb/
+    const kbContext = this.loadKnowledgeBase(task);
+    if (kbContext) {
+      sections.push(`## Knowledge Base\n${kbContext}`);
+    }
+
     // Current working state
     const workingText = this.deps.working.toPromptText();
     if (workingText && !workingText.startsWith("No active")) {
@@ -136,6 +142,46 @@ export class ContextAssembler {
     }
 
     return notes.length > 0 ? notes.join("\n\n") : null;
+  }
+
+  /**
+   * Load knowledge base pages into context.
+   * All pages are loaded — the KB is the agent's long-term brain.
+   * Capped at a token budget to avoid bloating the prompt.
+   */
+  private loadKnowledgeBase(_task: string): string | null {
+    const kbDir = path.join(os.homedir(), ".rue", "kb");
+    if (!fs.existsSync(kbDir)) return null;
+
+    const pages: string[] = [];
+    let totalLen = 0;
+    const MAX_LEN = 6000;
+
+    const walk = (dir: string) => {
+      for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+        if (entry.isDirectory()) {
+          walk(path.join(dir, entry.name));
+        } else if (entry.name.endsWith(".md")) {
+          const relPath = path.relative(kbDir, path.join(dir, entry.name)).replace(/\.md$/, "");
+          const content = fs.readFileSync(path.join(dir, entry.name), "utf-8");
+          const body = content.replace(/^---[\s\S]*?---\n?/, "").trim();
+          if (body && totalLen + body.length < MAX_LEN) {
+            pages.push(`### ${relPath}\n${body}`);
+            totalLen += body.length;
+          }
+        }
+      }
+    };
+    walk(kbDir);
+
+    if (pages.length === 0) return null;
+
+    let result = pages.join("\n\n");
+    if (totalLen >= MAX_LEN) {
+      result += "\n\n...(more pages available via `kb search`)";
+    }
+
+    return `${pages.length} page(s) loaded:\n\n${result}`;
   }
 
   private readProjectFile(filename: string): string | null {
