@@ -80,6 +80,10 @@ export class DaemonServer {
   }
 
   async start(): Promise<void> {
+    // The Claude SDK adds process exit listeners per query() call.
+    // Raise the limit to avoid spurious warnings during concurrent agent work.
+    process.setMaxListeners(50);
+
     // Restore working memory from previous session snapshot
     const snapshotPath = path.join(this.config.dataDir, "working-memory.json");
     if (fs.existsSync(snapshotPath)) {
