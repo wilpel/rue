@@ -145,13 +145,18 @@ export class TelegramBot {
 
     let buffer = "";
     let flushTimer: ReturnType<typeof setTimeout> | null = null;
-    const FLUSH_DELAY_MS = 1500; // pause threshold to detect end of a text burst
+    let sentFirst = false;
+    // After the first message is sent, use a longer delay for follow-ups
+    // since tool execution gaps can be long.
+    const FIRST_FLUSH_MS = 3000;  // wait 3s to collect the initial acknowledgment
+    const LATER_FLUSH_MS = 8000;  // 8s pause = likely a new text section after tool work
 
     const flush = async () => {
       const text = buffer.replace(/\[no_?response\]/gi, "").trim();
       buffer = "";
       if (text) {
-        console.log(`[telegram] Flushing burst to ${telegramId}: "${text.slice(0, 80)}"`);
+        console.log(`[telegram] Flushing${sentFirst ? " follow-up" : " first"} to ${telegramId}: "${text.slice(0, 80)}"`);
+        sentFirst = true;
         await sendMessage(text);
       }
     };
@@ -160,7 +165,8 @@ export class TelegramBot {
       buffer += chunk;
       // Reset the flush timer on each chunk — flush only after a pause
       if (flushTimer) clearTimeout(flushTimer);
-      flushTimer = setTimeout(() => { flush().catch(() => {}); }, FLUSH_DELAY_MS);
+      const delay = sentFirst ? LATER_FLUSH_MS : FIRST_FLUSH_MS;
+      flushTimer = setTimeout(() => { flush().catch(() => {}); }, delay);
     };
 
     const doAsk = async (retry: boolean): Promise<void> => {
