@@ -1,4 +1,4 @@
-import { Injectable } from "@nestjs/common";
+import { Injectable, Optional } from "@nestjs/common";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
@@ -35,7 +35,7 @@ type RueConfig = z.infer<typeof ConfigSchema>;
 export class ConfigService {
   private readonly config: RueConfig;
 
-  constructor(configPath?: string) {
+  constructor(@Optional() configPath?: string) {
     const filePath = configPath ?? path.join(os.homedir(), ".rue", "config.json");
     this.config = this.load(filePath);
   }
