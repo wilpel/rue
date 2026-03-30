@@ -223,9 +223,8 @@ async function handleCmd(
               deps.bus.emit("message:created", { id: "", role: "assistant", content: cleanedText, timestamp: Date.now() });
             }
 
-            // Extract user signals and store memory from conversation
-            extractUserSignals(text, deps);
-            storeConversationMemory(text, cleanedText, deps);
+            // Memory is now handled by the agent via the memory skill
+            // (not automatic extraction — the agent decides what to remember)
 
             send({ type: "result", id: frame.id, data: { output: cleanedText, cost: result.cost } });
           } else {
@@ -303,56 +302,3 @@ function handleSubscribe(
   }
 }
 
-// ── Memory extraction from conversations ─────────────────────────────
-
-function extractUserSignals(userText: string, deps: HandlerDeps): void {
-  try {
-    const lower = userText.toLowerCase();
-
-    // Detect language preference (Swedish)
-    if (/[åäöéèê]/.test(userText) || /\b(jag|du|vi|ska|kan|har|och|med|det|att)\b/.test(lower)) {
-      deps.userModel.addPreference("speaks Swedish");
-    }
-
-    // Detect name mentions ("I'm X", "my name is X", "call me X")
-    const nameMatch = userText.match(/(?:I'm|my name is|call me|I am)\s+([A-Z][a-z]+)/i);
-    if (nameMatch) {
-      deps.userModel.update({ name: nameMatch[1] });
-    }
-
-    // Detect expertise mentions
-    const techMatch = userText.match(/(?:I work with|I use|I'm a|I know)\s+(.+?)(?:\.|,|$)/i);
-    if (techMatch) {
-      deps.userModel.updateExpertise(techMatch[1].trim(), "mentioned");
-    }
-  } catch {
-    // Non-critical — don't break the response flow
-  }
-}
-
-function storeConversationMemory(userText: string, assistantText: string, deps: HandlerDeps): void {
-  try {
-    const lower = userText.toLowerCase();
-
-    // Store when user explicitly asks to remember something
-    if (lower.includes("remember") || lower.includes("note that") || lower.includes("keep in mind")) {
-      const factKey = `memory-${Date.now()}`;
-      deps.semanticMemory.store(factKey, userText, ["user-memory"]);
-    }
-
-    // Store substantive project/technical conversations
-    if (userText.length > 30 && assistantText.length > 50) {
-      if (lower.includes("project") || lower.includes("build") || lower.includes("create") ||
-          lower.includes("implement") || lower.includes("fix") || lower.includes("add feature")) {
-        const factKey = `conv-${Date.now()}`;
-        deps.semanticMemory.store(
-          factKey,
-          `User asked: ${userText.slice(0, 200)}\nRue answered: ${assistantText.slice(0, 300)}`,
-          ["conversation"],
-        );
-      }
-    }
-  } catch {
-    // Non-critical — don't break the response flow
-  }
-}

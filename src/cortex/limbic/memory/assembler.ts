@@ -59,6 +59,18 @@ export class ContextAssembler {
       sections.push(`## User\n${userText}`);
     }
 
+    // Long-term memory (MEMORY.md)
+    const memoryMd = this.loadMemoryMd();
+    if (memoryMd) {
+      sections.push(`## Long-term Memory\n${memoryMd}`);
+    }
+
+    // Today's + yesterday's daily notes
+    const dailyNotes = this.loadDailyNotes();
+    if (dailyNotes) {
+      sections.push(`## Recent Notes\n${dailyNotes}`);
+    }
+
     // Relevant knowledge from semantic memory
     const semanticText = this.deps.semantic.toPromptText(task, 15);
     if (semanticText && !semanticText.startsWith("No relevant")) {
@@ -86,6 +98,34 @@ export class ContextAssembler {
     }
 
     return sections.join("\n\n");
+  }
+
+  private loadMemoryMd(): string | null {
+    const memPath = path.join(os.homedir(), ".rue", "memory", "MEMORY.md");
+    if (!fs.existsSync(memPath)) return null;
+    const content = fs.readFileSync(memPath, "utf-8").trim();
+    // Only include if it has actual content beyond the header
+    const lines = content.split("\n").filter(l => l.trim() && !l.startsWith("#"));
+    if (lines.length === 0) return null;
+    return content;
+  }
+
+  private loadDailyNotes(): string | null {
+    const dailyDir = path.join(os.homedir(), ".rue", "memory", "daily");
+    if (!fs.existsSync(dailyDir)) return null;
+
+    const today = new Date().toISOString().split("T")[0];
+    const yesterday = new Date(Date.now() - 86400000).toISOString().split("T")[0];
+
+    const notes: string[] = [];
+    for (const date of [yesterday, today]) {
+      const file = path.join(dailyDir, `${date}.md`);
+      if (fs.existsSync(file)) {
+        notes.push(fs.readFileSync(file, "utf-8").trim());
+      }
+    }
+
+    return notes.length > 0 ? notes.join("\n\n") : null;
   }
 
   private readProjectFile(filename: string): string | null {
