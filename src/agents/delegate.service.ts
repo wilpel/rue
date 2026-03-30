@@ -5,7 +5,7 @@ import { InboxService } from "../inbox/inbox.service.js";
 import { HealthService } from "./health.service.js";
 import { log } from "../shared/logger.js";
 
-interface DelegateInfo {
+export interface DelegateInfo {
   id: string;
   task: string;
   status: string;
