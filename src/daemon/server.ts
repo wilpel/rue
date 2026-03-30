@@ -434,6 +434,26 @@ export class DaemonServer {
         return;
       }
 
+      // POST /api/delegate — spawn background agent, send result via Telegram
+      if (pathname === "/api/delegate" && req.method === "POST") {
+        let body = "";
+        req.on("data", (chunk: Buffer) => { body += chunk.toString(); });
+        req.on("end", () => {
+          try {
+            const { task, chatId, messageId } = JSON.parse(body);
+            if (!task || !chatId) { json({ error: "task and chatId required" }, 400); return; }
+            const agentId = `delegate-${Date.now()}`;
+            // Fire-and-forget: spawn in background, send result via Telegram when done
+            this.spawnDelegatedTask(agentId, task, chatId, messageId)
+              .catch(err => log.error(`[delegate] Agent ${agentId} failed`, { error: err instanceof Error ? err.message : err }));
+            json({ ok: true, agentId });
+          } catch (err) {
+            json({ error: err instanceof Error ? err.message : "Failed" }, 500);
+          }
+        });
+        return;
+      }
+
       // Default: not an API route
       if (pathname.startsWith("/api/")) {
         json({ error: "Not found" }, 404);
@@ -877,6 +897,118 @@ ${projectPrompt ? "## Project-Specific Instructions\n\n" + projectPrompt : ""}`;
     } finally {
       clearTimeout(timeoutTimer);
       this.activeProjectAbortControllers.delete(abortController);
+    }
+  }
+
+  // ── Delegated Tasks — background agents that report results via Telegram ──
+
+  private async spawnDelegatedTask(agentId: string, task: string, chatId: number, messageId?: number): Promise<void> {
+    log.info(`[delegate] Spawning ${agentId}: "${task.slice(0, 60)}"`);
+
+    const abortController = new AbortController();
+    this.activeProjectAbortControllers.add(abortController);
+
+    const timeoutTimer = setTimeout(() => {
+      if (!abortController.signal.aborted) {
+        log.warn(`[delegate] Agent ${agentId} timed out — aborting`);
+        abortController.abort();
+      }
+    }, DaemonServer.PROJECT_AGENT_TIMEOUT_MS);
+
+    this.bus.emit("agent:spawned", { id: agentId, task, lane: "sub" });
+    this.healthMonitor.trackAgent(agentId, Date.now());
+
+    try {
+      const { query } = await import("@anthropic-ai/claude-agent-sdk");
+
+      const systemPrompt = `You are a background worker agent for Rue. You have been given a task to complete.
+Do the work thoroughly using your available tools. When done, output ONLY the final answer/result that should be sent to the user — no meta-commentary about being an agent.
+Be concise but complete. Format nicely for Telegram (plain text, no markdown headers).`;
+
+      const q = query({
+        prompt: task,
+        options: {
+          cwd: PROJECT_ROOT,
+          systemPrompt,
+          model: "sonnet",
+          tools: ["Read", "Write", "Edit", "Bash", "Glob", "Grep", "WebSearch", "WebFetch"],
+          allowedTools: ["Read", "Write", "Edit", "Bash", "Glob", "Grep", "WebSearch", "WebFetch"],
+          permissionMode: "bypassPermissions",
+          allowDangerouslySkipPermissions: true,
+          maxTurns: 25,
+          abortController,
+          settingSources: [],
+        },
+      });
+
+      let output = "";
+      for await (const message of q) {
+        if (message.type === "assistant") {
+          const assistantMsg = message as SDKAssistantMessage;
+          for (const block of assistantMsg.message.content) {
+            if (block.type === "text") output += (block as { type: "text"; text: string }).text;
+          }
+        }
+        if (message.type === "result") {
+          const resultMsg = message as SDKResultMessage;
+          if (resultMsg.subtype === "success" && resultMsg.result) {
+            output = resultMsg.result;
+          }
+        }
+      }
+
+      // Send result back via Telegram
+      if (output.trim()) {
+        await this.sendTelegramResult(chatId, output.trim(), messageId);
+        log.info(`[delegate] Agent ${agentId} completed, sent ${output.length} chars to chat ${chatId}`);
+      }
+
+      this.bus.emit("agent:completed", { id: agentId, result: output.slice(0, 200), cost: 0 });
+      this.healthMonitor.untrackAgent(agentId);
+
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      log.error(`[delegate] Agent ${agentId} failed: ${errMsg}`);
+      // Notify user of failure
+      await this.sendTelegramResult(chatId, "Sorry, I ran into an issue with that task. Try again?", messageId).catch(() => {});
+      this.bus.emit("agent:failed", { id: agentId, error: errMsg, retryable: false });
+      this.healthMonitor.untrackAgent(agentId);
+    } finally {
+      clearTimeout(timeoutTimer);
+      this.activeProjectAbortControllers.delete(abortController);
+    }
+  }
+
+  /** Send a message via Telegram bot token directly (no daemon client needed). */
+  private async sendTelegramResult(chatId: number, text: string, replyToMessageId?: number): Promise<void> {
+    const store = new TelegramStore(this.config.dataDir);
+    const token = store.getBotToken();
+    if (!token) { log.error("[delegate] No Telegram token — cannot send result"); return; }
+
+    // Split long messages (Telegram max 4096 chars)
+    const MAX_LEN = 4096;
+    const chunks: string[] = [];
+    let remaining = text;
+    while (remaining.length > 0) {
+      if (remaining.length <= MAX_LEN) { chunks.push(remaining); break; }
+      let splitIdx = remaining.lastIndexOf("\n\n", MAX_LEN);
+      if (splitIdx < MAX_LEN / 2) splitIdx = remaining.lastIndexOf("\n", MAX_LEN);
+      if (splitIdx < MAX_LEN / 4) splitIdx = MAX_LEN;
+      chunks.push(remaining.slice(0, splitIdx));
+      remaining = remaining.slice(splitIdx).trim();
+    }
+
+    for (let i = 0; i < chunks.length; i++) {
+      const body: Record<string, unknown> = { chat_id: chatId, text: chunks[i] };
+      if (i === 0 && replyToMessageId) body.reply_to_message_id = replyToMessageId;
+      const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) {
+        log.error(`[delegate] Telegram send failed: ${res.status} ${res.statusText}`);
+      }
     }
   }
 }
