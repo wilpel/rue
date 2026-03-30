@@ -106,29 +106,14 @@ export class TelegramBot {
         const prompt = `[Telegram message from chat_id=${chatId} message_id=${messageId}]\n${text}`;
 
         try {
-          const response = await this.askWithTimeout(telegramId, prompt, 180_000); // 3 min max
-          console.log(`[telegram] Raw response for ${telegramId}: "${(response ?? "").slice(0, 120)}"`);
-
-          if (!response || response === "[no_response]" || response.toLowerCase() === "[no response]") return;
-          const cleaned = response.replace(/\[no_?response\]/gi, "").trim();
-          if (!cleaned) return;
-
-          // Split and send
-          const paragraphs = cleaned.split(/\n\n+/).filter(p => p.trim());
-          if (paragraphs.length <= 2) {
+          const sendReply = async (msg: string) => {
+            const cleaned = msg.replace(/\[no_?response\]/gi, "").trim();
+            if (!cleaned) return;
             await this.sendLongMessage(ctx, cleaned);
-          } else {
-            const chunks: string[] = [];
-            let current = "";
-            for (const para of paragraphs) {
-              if (current && (current.length + para.length + 2) > 2000) { chunks.push(current.trim()); current = para; }
-              else current = current ? current + "\n\n" + para : para;
-            }
-            if (current.trim()) chunks.push(current.trim());
-            for (const chunk of chunks) await this.sendLongMessage(ctx, chunk);
-          }
+            console.log(`[telegram] Sent response to ${telegramId} (${cleaned.length} chars)`);
+          };
 
-          console.log(`[telegram] Sent response to ${telegramId} (${cleaned.length} chars)`);
+          await this.askStreaming(telegramId, prompt, 180_000, sendReply);
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);
           console.error(`[telegram] Failed for ${telegramId}: ${msg}`);
@@ -137,7 +122,6 @@ export class TelegramBot {
           } else {
             await ctx.reply("Something went wrong. Try again.").catch(() => {});
           }
-          // Always clean up the client on failure
           this.disconnectClient(telegramId);
         }
       });
@@ -145,51 +129,61 @@ export class TelegramBot {
   }
 
   /**
-   * Ask the daemon with a hard timeout. If the SDK hangs, this still resolves
-   * so the message queue doesn't block forever.
+   * Stream-aware ask: sends the AI's first text burst immediately, then
+   * sends subsequent text bursts as separate messages. This way the user
+   * sees "On it." right away while the AI does tool work in the background.
+   *
+   * A "burst" is detected by a pause in streaming (no new chunks for 1.5s).
    */
-  private async askWithTimeout(telegramId: number, prompt: string, timeoutMs: number): Promise<string> {
-    // Start typing indicator
-    const typingInterval = setInterval(() => {
-      // We don't have ctx here, but that's ok — typing was already sent
-    }, 4000);
+  private async askStreaming(
+    telegramId: number,
+    prompt: string,
+    timeoutMs: number,
+    sendMessage: (text: string) => Promise<void>,
+  ): Promise<void> {
+    const client = await this.getOrCreateClient(telegramId);
 
-    try {
-      return await Promise.race([
-        this.doAsk(telegramId, prompt),
-        new Promise<string>((_, reject) =>
-          setTimeout(() => reject(new Error("Request timed out")), timeoutMs)
-        ),
-      ]);
-    } finally {
-      clearInterval(typingInterval);
-    }
-  }
+    let buffer = "";
+    let flushTimer: ReturnType<typeof setTimeout> | null = null;
+    const FLUSH_DELAY_MS = 1500; // pause threshold to detect end of a text burst
 
-  /**
-   * Actually perform the ask, with one retry on connection failure.
-   */
-  private async doAsk(telegramId: number, prompt: string): Promise<string> {
-    const attempt = async (retry: boolean): Promise<string> => {
-      if (retry) this.disconnectClient(telegramId);
-
-      const client = await this.getOrCreateClient(telegramId);
-      let fullResponse = "";
-
-      const result = await client.ask(prompt, {
-        onStream: (chunk) => { fullResponse += chunk; },
-      });
-
-      return result.output || fullResponse;
+    const flush = async () => {
+      const text = buffer.replace(/\[no_?response\]/gi, "").trim();
+      buffer = "";
+      if (text) await sendMessage(text);
     };
 
-    try {
-      return await attempt(false);
-    } catch (err) {
+    const onChunk = (chunk: string) => {
+      buffer += chunk;
+      // Reset the flush timer on each chunk — flush only after a pause
+      if (flushTimer) clearTimeout(flushTimer);
+      flushTimer = setTimeout(() => { flush().catch(() => {}); }, FLUSH_DELAY_MS);
+    };
+
+    const doAsk = async (retry: boolean): Promise<void> => {
+      if (retry) this.disconnectClient(telegramId);
+      const c = retry ? await this.getOrCreateClient(telegramId) : client;
+
+      await c.ask(prompt, { onStream: onChunk });
+    };
+
+    const askPromise = doAsk(false).catch(async (err) => {
       const msg = err instanceof Error ? err.message : String(err);
       console.log(`[telegram] First attempt failed (${msg}), retrying with fresh connection...`);
-      return await attempt(true);
-    }
+      return doAsk(true);
+    });
+
+    // Race against hard timeout
+    await Promise.race([
+      askPromise,
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error("Request timed out")), timeoutMs)
+      ),
+    ]);
+
+    // Flush any remaining buffered text
+    if (flushTimer) clearTimeout(flushTimer);
+    if (buffer.trim()) await flush();
   }
 
   private async getOrCreateClient(telegramId: number): Promise<DaemonClient> {
@@ -225,7 +219,6 @@ export class TelegramBot {
         }
       }
     } finally {
-      // ALWAYS clean up — prevents queue from jamming permanently
       this.processingUsers.delete(userId);
       this.messageQueues.delete(userId);
     }
