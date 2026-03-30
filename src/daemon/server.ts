@@ -353,6 +353,48 @@ export class DaemonServer {
         return;
       }
 
+      // GET /api/secrets — list secret keys (no values)
+      if (pathname === "/api/secrets" && req.method === "GET") {
+        try {
+          const { execSync } = require("node:child_process");
+          const output = execSync("node --import tsx/esm skills/secrets/run.ts list", { cwd: PROJECT_ROOT, encoding: "utf-8" });
+          // Parse the output to extract keys
+          const keys = output.split("\n").filter((l: string) => l.trim().startsWith("  ")).map((l: string) => l.trim());
+          json({ keys });
+        } catch { json({ keys: [] }); }
+        return;
+      }
+
+      // POST /api/secrets — set a secret
+      if (pathname === "/api/secrets" && req.method === "POST") {
+        let body = "";
+        req.on("data", (chunk: Buffer) => { body += chunk.toString(); });
+        req.on("end", () => {
+          try {
+            const { key, value } = JSON.parse(body);
+            if (!key || !value) { json({ error: "key and value required" }, 400); return; }
+            const { execSync } = require("node:child_process");
+            execSync(`node --import tsx/esm skills/secrets/run.ts set --key "${key.replace(/"/g, '\\"')}" --value "${value.replace(/"/g, '\\"')}"`, { cwd: PROJECT_ROOT, encoding: "utf-8" });
+            json({ ok: true });
+          } catch (err) {
+            json({ error: err instanceof Error ? err.message : "Failed" }, 500);
+          }
+        });
+        return;
+      }
+
+      // DELETE /api/secrets/:key
+      const deleteSecretMatch = pathname.match(/^\/api\/secrets\/([^/]+)$/);
+      if (deleteSecretMatch && req.method === "DELETE") {
+        try {
+          const key = decodeURIComponent(deleteSecretMatch[1]);
+          const { execSync } = require("node:child_process");
+          execSync(`node --import tsx/esm skills/secrets/run.ts delete --key "${key}"`, { cwd: PROJECT_ROOT, encoding: "utf-8" });
+          json({ ok: true });
+        } catch { json({ error: "Failed to delete" }, 500); }
+        return;
+      }
+
       // Default: not an API route
       if (pathname.startsWith("/api/")) {
         json({ error: "Not found" }, 404);

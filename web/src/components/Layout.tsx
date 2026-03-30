@@ -1,5 +1,5 @@
 import { Outlet, NavLink, Link, useLocation } from "react-router-dom";
-import { FolderKanban, Bot, Settings, PanelLeftClose, PanelLeft, Plus, ChevronDown, LayoutDashboard, MessageCircle } from "lucide-react";
+import { FolderKanban, Bot, Settings, PanelLeftClose, PanelLeft, Plus, ChevronDown, LayoutDashboard, MessageCircle, KeyRound } from "lucide-react";
 import { useState, useEffect } from "react";
 import { api } from "../lib/api";
 
@@ -47,6 +47,7 @@ export function Layout() {
           <SidebarLink to="/chat" icon={MessageCircle} label="Chat" collapsed={collapsed} />
           <SidebarLink to="/projects" icon={FolderKanban} label="Projects" collapsed={collapsed} />
           <SidebarLink to="/agents" icon={Bot} label="Agents" collapsed={collapsed} />
+          <SidebarLink to="/secrets" icon={KeyRound} label="Secrets" collapsed={collapsed} />
           <SidebarLink to="/settings" icon={Settings} label="Settings" collapsed={collapsed} />
         </div>
 

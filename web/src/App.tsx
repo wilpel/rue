@@ -5,6 +5,7 @@ import { DashboardPage } from "./pages/DashboardPage";
 import { ChatPage } from "./pages/ChatPage";
 import { ProjectsPage } from "./pages/ProjectsPage";
 import { AgentsPage } from "./pages/AgentsPage";
+import { SecretsPage } from "./pages/SecretsPage";
 import { SettingsPage } from "./pages/SettingsPage";
 
 export default function App() {
@@ -17,6 +18,7 @@ export default function App() {
             <Route path="chat" element={<ChatPage />} />
             <Route path="projects/*" element={<ProjectsPage />} />
             <Route path="agents" element={<AgentsPage />} />
+            <Route path="secrets" element={<SecretsPage />} />
             <Route path="settings" element={<SettingsPage />} />
           </Route>
         </Routes>

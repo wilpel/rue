@@ -270,6 +270,50 @@ export function createCLI(): Command {
       }
     });
 
+  // ── Secrets commands ──────────────────────────────────────────
+
+  const secrets = program.command("secrets").description("Manage encrypted secrets vault");
+
+  secrets
+    .command("set <key> <value>")
+    .description("Store a secret")
+    .action(async (key: string, value: string) => {
+      const { execSync } = await import("node:child_process");
+      try {
+        execSync(`node --import tsx/esm skills/secrets/run.ts set --key "${key}" --value "${value.replace(/"/g, '\\"')}"`, { cwd: path.resolve(__dirname, "..", "..", ".."), stdio: "inherit" });
+      } catch { process.exit(1); }
+    });
+
+  secrets
+    .command("get <key>")
+    .description("Retrieve a secret")
+    .action(async (key: string) => {
+      const { execSync } = await import("node:child_process");
+      try {
+        execSync(`node --import tsx/esm skills/secrets/run.ts get --key "${key}"`, { cwd: path.resolve(__dirname, "..", "..", ".."), stdio: "inherit" });
+      } catch { process.exit(1); }
+    });
+
+  secrets
+    .command("list")
+    .description("List all secret keys")
+    .action(async () => {
+      const { execSync } = await import("node:child_process");
+      try {
+        execSync("node --import tsx/esm skills/secrets/run.ts list", { cwd: path.resolve(__dirname, "..", "..", ".."), stdio: "inherit" });
+      } catch { process.exit(1); }
+    });
+
+  secrets
+    .command("delete <key>")
+    .description("Delete a secret")
+    .action(async (key: string) => {
+      const { execSync } = await import("node:child_process");
+      try {
+        execSync(`node --import tsx/esm skills/secrets/run.ts delete --key "${key}"`, { cwd: path.resolve(__dirname, "..", "..", ".."), stdio: "inherit" });
+      } catch { process.exit(1); }
+    });
+
   program.command("info").description("Show daemon info").action(async () => {
     const config = loadConfig(CONFIG_PATH);
     console.log("Rue Bot v0.1.0");
