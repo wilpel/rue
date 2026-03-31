@@ -124,7 +124,7 @@ async function handleCmd(
               allowedTools: ["Read", "Write", "Edit", "Bash", "Glob", "Grep", "WebSearch", "WebFetch", "Agent"],
               permissionMode: "bypassPermissions",
               allowDangerouslySkipPermissions: true,
-              maxTurns: 3,  // Main agent: acknowledge + delegate. Heavy work goes to background agents via delegate skill.
+              // No turn limit — let the agent work until done
               abortController,
               includePartialMessages: true,
               settingSources: [],
