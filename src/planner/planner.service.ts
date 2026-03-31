@@ -1,4 +1,4 @@
-import { Injectable } from "@nestjs/common";
+import { Injectable, Inject } from "@nestjs/common";
 import { BusService } from "../bus/bus.service.js";
 import { SupervisorService } from "../agents/supervisor.service.js";
 import { TaskDAG } from "./dag.service.js";
@@ -12,8 +12,8 @@ export interface TaskDefinition {
 @Injectable()
 export class PlannerService {
   constructor(
-    private readonly bus: BusService,
-    private readonly supervisor: SupervisorService,
+    @Inject(BusService) private readonly bus: BusService,
+    @Inject(SupervisorService) private readonly supervisor: SupervisorService,
   ) {}
 
   createDAG(goal: string, tasks: TaskDefinition[]): TaskDAG {

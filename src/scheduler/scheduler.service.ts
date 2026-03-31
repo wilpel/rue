@@ -1,4 +1,4 @@
-import { Injectable, OnModuleInit, OnModuleDestroy } from "@nestjs/common";
+import { Injectable, Inject, OnModuleInit, OnModuleDestroy } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service.js";
 import { InboxService } from "../inbox/inbox.service.js";
 import { DelegateService } from "../agents/delegate.service.js";
@@ -35,9 +35,9 @@ export class SchedulerService implements OnModuleInit, OnModuleDestroy {
   private readonly pollIntervalMs = 30_000;
 
   constructor(
-    private readonly db: DatabaseService,
-    private readonly inbox: InboxService,
-    private readonly delegate: DelegateService,
+    @Inject(DatabaseService) private readonly db: DatabaseService,
+    @Inject(InboxService) private readonly inbox: InboxService,
+    @Inject(DelegateService) private readonly delegate: DelegateService,
   ) {}
 
   onModuleInit(): void {

@@ -1,4 +1,4 @@
-import { Injectable, OnModuleInit, OnModuleDestroy } from "@nestjs/common";
+import { Injectable, Inject, OnModuleInit, OnModuleDestroy } from "@nestjs/common";
 import { Telegraf } from "telegraf";
 import { InboxService } from "../inbox/inbox.service.js";
 import { TelegramStoreService } from "./telegram-store.service.js";
@@ -10,8 +10,8 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
   private store: TelegramStoreService;
 
   constructor(
-    private readonly inbox: InboxService,
-    store: TelegramStoreService,
+    @Inject(InboxService) private readonly inbox: InboxService,
+    @Inject(TelegramStoreService) store: TelegramStoreService,
   ) {
     this.store = store;
   }

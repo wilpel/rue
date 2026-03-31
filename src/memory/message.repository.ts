@@ -1,4 +1,4 @@
-import { Injectable } from "@nestjs/common";
+import { Injectable, Inject } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service.js";
 import { messages } from "../database/schema.js";
 import { desc, count, eq } from "drizzle-orm";
@@ -17,7 +17,7 @@ export interface StoredMessage {
 
 @Injectable()
 export class MessageRepository {
-  constructor(private readonly db: DatabaseService) {}
+  constructor(@Inject(DatabaseService) private readonly db: DatabaseService) {}
 
   append(msg: { role: MessageRole; content: string; sessionId?: string; metadata?: Record<string, unknown> }): StoredMessage {
     const id = `msg_${nanoid(12)}`;

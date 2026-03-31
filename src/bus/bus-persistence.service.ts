@@ -1,4 +1,4 @@
-import { Injectable } from "@nestjs/common";
+import { Injectable, Inject } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service.js";
 import { events } from "../database/schema.js";
 import { desc } from "drizzle-orm";
@@ -12,7 +12,7 @@ export interface PersistedEvent {
 
 @Injectable()
 export class BusPersistenceService {
-  constructor(private readonly db: DatabaseService) {}
+  constructor(@Inject(DatabaseService) private readonly db: DatabaseService) {}
 
   append(channel: string, payload: unknown): void {
     this.db.getDrizzle().insert(events).values({

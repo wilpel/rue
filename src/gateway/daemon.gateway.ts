@@ -1,5 +1,5 @@
 import { WebSocketGateway, WebSocketServer, OnGatewayConnection, OnGatewayDisconnect } from "@nestjs/websockets";
-import { Injectable, OnModuleDestroy } from "@nestjs/common";
+import { Injectable, Inject, OnModuleDestroy } from "@nestjs/common";
 import type { WebSocket, WebSocketServer as WSServer } from "ws";
 import { parseClientFrame, serializeDaemonFrame } from "./protocol.js";
 import type { DaemonFrame } from "./protocol.js";
@@ -27,11 +27,11 @@ export class DaemonGateway implements OnGatewayConnection, OnGatewayDisconnect, 
   private static readonly QUERY_TIMEOUT_MS = 300_000;
 
   constructor(
-    private readonly bus: BusService,
-    private readonly supervisor: SupervisorService,
-    private readonly assembler: AssemblerService,
-    private readonly messages: MessageRepository,
-    private readonly inbox: InboxService,
+    @Inject(BusService) private readonly bus: BusService,
+    @Inject(SupervisorService) private readonly supervisor: SupervisorService,
+    @Inject(AssemblerService) private readonly assembler: AssemblerService,
+    @Inject(MessageRepository) private readonly messages: MessageRepository,
+    @Inject(InboxService) private readonly inbox: InboxService,
   ) {}
 
   handleConnection(_client: WebSocket): void {

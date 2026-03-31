@@ -1,4 +1,4 @@
-import { Injectable } from "@nestjs/common";
+import { Injectable, Inject } from "@nestjs/common";
 import { BusService } from "../bus/bus.service.js";
 import { LaneQueueService } from "./lane-queue.service.js";
 import { ClaudeProcessService, ClaudeProcess } from "./claude-process.service.js";
@@ -25,10 +25,10 @@ export class SupervisorService {
   private readonly maxAgents: number;
 
   constructor(
-    private readonly bus: BusService,
-    private readonly lanes: LaneQueueService,
-    private readonly processService: ClaudeProcessService,
-    config: ConfigService,
+    @Inject(BusService) private readonly bus: BusService,
+    @Inject(LaneQueueService) private readonly lanes: LaneQueueService,
+    @Inject(ClaudeProcessService) private readonly processService: ClaudeProcessService,
+    @Inject(ConfigService) config: ConfigService,
   ) {
     this.maxAgents = config.maxAgents;
   }

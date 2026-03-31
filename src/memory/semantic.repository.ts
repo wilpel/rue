@@ -1,4 +1,4 @@
-import { Injectable } from "@nestjs/common";
+import { Injectable, Inject } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service.js";
 import { facts } from "../database/schema.js";
 import { eq } from "drizzle-orm";
@@ -8,7 +8,7 @@ export interface SearchResult { key: string; content: string; tags: string[]; sc
 
 @Injectable()
 export class SemanticRepository {
-  constructor(private readonly db: DatabaseService) {}
+  constructor(@Inject(DatabaseService) private readonly db: DatabaseService) {}
 
   store(key: string, content: string, tags: string[]): void {
     const now = Date.now();

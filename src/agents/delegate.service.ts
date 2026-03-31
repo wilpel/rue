@@ -1,4 +1,4 @@
-import { Injectable } from "@nestjs/common";
+import { Injectable, Inject } from "@nestjs/common";
 import { ClaudeProcessService } from "./claude-process.service.js";
 import { BusService } from "../bus/bus.service.js";
 import { InboxService } from "../inbox/inbox.service.js";
@@ -29,10 +29,10 @@ export class DelegateService {
   private static readonly TIMEOUT_MS = 600_000; // 10 min
 
   constructor(
-    private readonly processService: ClaudeProcessService,
-    private readonly bus: BusService,
-    private readonly inbox: InboxService,
-    private readonly health: HealthService,
+    @Inject(ClaudeProcessService) private readonly processService: ClaudeProcessService,
+    @Inject(BusService) private readonly bus: BusService,
+    @Inject(InboxService) private readonly inbox: InboxService,
+    @Inject(HealthService) private readonly health: HealthService,
   ) {}
 
   async spawn(task: string, chatId: number, messageId?: number): Promise<void> {

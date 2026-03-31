@@ -1,4 +1,4 @@
-import { Injectable, OnModuleDestroy } from "@nestjs/common";
+import { Injectable, Inject, OnModuleDestroy } from "@nestjs/common";
 import { BusService } from "../bus/bus.service.js";
 import { ConfigService } from "../config/config.service.js";
 
@@ -10,7 +10,7 @@ export class HealthService implements OnModuleDestroy {
   private readonly stallThresholdMs: number;
   private readonly checkIntervalMs: number;
 
-  constructor(private readonly bus: BusService, config: ConfigService) {
+  constructor(@Inject(BusService) private readonly bus: BusService, @Inject(ConfigService) config: ConfigService) {
     this.stallThresholdMs = config.stall.timeoutMs;
     this.checkIntervalMs = config.stall.nudgeMs;
   }
