@@ -131,8 +131,12 @@ export class TelegramBot {
       } catch { ctx.reply("Can't reach daemon. Is it running?"); }
     });
 
-    // Main message handler — text
+    // Main message handler — text only (skip if it's a sticker/photo/etc)
     this.bot.on("text", async (ctx) => {
+      // Guard: if this message also has media, let the specific handler deal with it
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const msg = ctx.message as any;
+      if (msg.sticker || msg.photo || msg.document || msg.voice || msg.video) return;
       const text = ctx.message.text;
       if (!text || text.startsWith("/")) return;
       await this.handleIncoming(ctx, text);
@@ -292,8 +296,11 @@ export class TelegramBot {
 
     const cleaned = fullResponse.replace(/\[no_?response\]/gi, "").trim();
     if (cleaned) {
-      console.log(`[telegram] Sending response to ${telegramId} (${cleaned.length} chars)`);
+      console.log(`[telegram] Sending response to ${telegramId} (${cleaned.length} chars): "${cleaned.slice(0, 60)}"`);
       await sendMessage(cleaned);
+      console.log(`[telegram] Sent response to ${telegramId}`);
+    } else {
+      console.log(`[telegram] No response to send (empty or no_response)`);
     }
   }
 
