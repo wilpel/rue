@@ -54,8 +54,14 @@ export class InboxProcessorService implements OnModuleInit {
 
   private async handleTelegram(msg: InboxMessage): Promise<void> {
     const chatId = msg.metadata.chatId as number;
+    const messageId = msg.metadata.messageId as number | undefined;
 
     log.info(`[inbox-processor] Processing: "${msg.content.slice(0, 50)}"`);
+
+    // React with 👀 immediately so user knows we're on it
+    if (messageId) {
+      this.telegram.reactToMessage(chatId, messageId, "👀").catch(() => {});
+    }
 
     const systemPrompt = this.assembler.assemble(msg.content);
     const prefix = this.inbox.formatPrefix(msg.source);
@@ -79,16 +85,24 @@ export class InboxProcessorService implements OnModuleInit {
         await this.telegram.sendMessage(chatId, cleaned);
         log.info(`[inbox-processor] Responded (${cleaned.length} chars)`);
       }
+
+      // Replace 👀 with ✅ when done
+      if (messageId) {
+        this.telegram.reactToMessage(chatId, messageId, "✅").catch(() => {});
+      }
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : String(err);
       log.error(`[inbox-processor] Claude query failed: ${errMsg}`);
 
-      // If session resume failed, clear session and try fresh on next message
       if (resumeId) {
         this.lastSessionId = undefined;
         this.lastSessionTime = 0;
       }
 
+      // React with ❌ on failure
+      if (messageId) {
+        this.telegram.reactToMessage(chatId, messageId, "❌").catch(() => {});
+      }
       await this.telegram.sendMessage(chatId, "Something went wrong. Try again.").catch(() => {});
     }
   }

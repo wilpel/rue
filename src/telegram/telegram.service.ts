@@ -36,6 +36,20 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
     if (this.bot) { this.bot.stop("shutdown"); log.info("[telegram] Bot stopped"); }
   }
 
+  async reactToMessage(chatId: number, messageId: number, emoji: string): Promise<void> {
+    const token = this.store.getBotToken();
+    if (!token) return;
+    try {
+      await fetch(`https://api.telegram.org/bot${token}/setMessageReaction`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ chat_id: chatId, message_id: messageId, reaction: [{ type: "emoji", emoji }] }),
+      });
+    } catch (err) {
+      log.error(`[telegram] React failed: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
   async sendMessage(chatId: number, text: string, replyToMessageId?: number): Promise<void> {
     const token = this.store.getBotToken();
     if (!token) { log.error("[telegram] No token — cannot send"); return; }
