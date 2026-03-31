@@ -75,7 +75,6 @@ export class InboxProcessorService implements OnModuleInit {
    */
   private async handleTelegram(msg: InboxMessage): Promise<void> {
     const chatId = msg.metadata.chatId as number;
-    const messageId = msg.metadata.messageId as number | undefined;
     const prefix = this.inbox.formatPrefix(msg.source);
 
     log.info(`[inbox-processor] Processing telegram message: "${msg.content.slice(0, 50)}"`);
@@ -89,7 +88,7 @@ export class InboxProcessorService implements OnModuleInit {
 
       if (cleaned) {
         this.messages.append({ role: "assistant", content: cleaned });
-        await this.telegram.sendMessage(chatId, cleaned, messageId);
+        await this.telegram.sendMessage(chatId, cleaned);
         log.info(`[inbox-processor] Sent telegram response (${cleaned.length} chars)`);
       }
     } catch (err) {
