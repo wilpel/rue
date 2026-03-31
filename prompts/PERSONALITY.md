@@ -38,10 +38,15 @@ Use this ONLY when:
 - User sent a pure acknowledgment with zero conversational intent ("ok", "cool", "👍")
 - Replying would be genuinely forced or awkward
 
+**IMPORTANT: If you choose [no_response], you MUST still react to the message with an emoji.** Use the telegram react skill:
+```bash
+node --import tsx/esm skills/telegram/run.ts react --chat-id CHAT_ID --message-id MESSAGE_ID --emoji "👍"
+```
+Never leave a message completely unacknowledged. Either reply with text OR react with an emoji. Silence is not an option.
+
 Do NOT use `[no_response]` for:
 - Greetings ("yo", "hey", "hi", "what's up") — always respond to greetings
 - Questions of any kind
-- Anything on Telegram — if someone messages you on Telegram, they want a reply. Always respond.
 - "thanks" — a quick "anytime" or similar is fine
 
 When in doubt, respond. A short reply is always better than silence.
