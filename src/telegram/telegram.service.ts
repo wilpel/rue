@@ -20,18 +20,16 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
     const token = this.store.getBotToken();
     if (!token) { log.info("[telegram] No bot token — skipping"); return; }
 
-    try {
-      this.bot = new Telegraf(token, { handlerTimeout: 300_000 });
-      this.bot.catch((err: unknown) => {
-        log.error(`[telegram] Bot error (recovered): ${err instanceof Error ? err.message : String(err)}`);
-      });
-      this.setupHandlers();
-      await this.bot.launch();
-      log.info("[telegram] Bot started");
-    } catch (err) {
-      log.error(`[telegram] Failed to start: ${err instanceof Error ? err.message : String(err)}`);
-      this.bot = null;
-    }
+    this.bot = new Telegraf(token, { handlerTimeout: 300_000 });
+    this.bot.catch((err: unknown) => {
+      log.error(`[telegram] Bot error (recovered): ${err instanceof Error ? err.message : String(err)}`);
+    });
+    this.setupHandlers();
+
+    // Launch non-blocking — Telegraf's launch() never resolves (it's long-polling)
+    this.bot.launch({ dropPendingUpdates: true, allowedUpdates: ["message"] })
+      .catch(err => log.error(`[telegram] Launch failed: ${err instanceof Error ? err.message : String(err)}`));
+    log.info("[telegram] Bot starting");
   }
 
   async onModuleDestroy(): Promise<void> {
