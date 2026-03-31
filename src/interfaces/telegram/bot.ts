@@ -61,7 +61,7 @@ export class TelegramBot {
 
   private async launchBot(): Promise<void> {
     await this.bot.launch({
-      dropPendingUpdates: false,
+      dropPendingUpdates: true,
       allowedUpdates: ["message"],
     });
     this.lastUpdateAt = Date.now();
