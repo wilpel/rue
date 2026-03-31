@@ -124,10 +124,13 @@ export class InboxProcessorService implements OnModuleInit {
           cwd: process.cwd(),
           systemPrompt,
           model: "opus",
-          tools: ["Read", "Write", "Edit", "Bash", "Glob", "Grep", "WebSearch", "WebFetch", "Agent"],
-          allowedTools: ["Read", "Write", "Edit", "Bash", "Glob", "Grep", "WebSearch", "WebFetch", "Agent"],
+          // Main agent is a dispatcher: respond + delegate via Bash skill calls.
+          // Heavy tools (WebSearch, WebFetch, Read, etc.) are for delegate agents only.
+          tools: ["Bash"],
+          allowedTools: ["Bash"],
           permissionMode: "bypassPermissions",
           allowDangerouslySkipPermissions: true,
+          maxTurns: 4, // acknowledge + delegate + confirm, never block
           abortController,
           includePartialMessages: true,
           settingSources: [],
