@@ -7,7 +7,7 @@ import { BusService } from "../bus/bus.service.js";
 import { SupervisorService } from "../agents/supervisor.service.js";
 import { AssemblerService } from "../memory/assembler.service.js";
 import { MessageRepository } from "../memory/message.repository.js";
-import { InboxService } from "../inbox/inbox.service.js";
+// Gateway handles WS streaming directly — doesn't use channel system
 import { log } from "../shared/logger.js";
 import type { SDKSystemMessage, SDKStreamEvent, SDKAssistantMessage, SDKResultMessage } from "../shared/sdk-types.js";
 
@@ -31,7 +31,6 @@ export class DaemonGateway implements OnGatewayConnection, OnGatewayDisconnect, 
     @Inject(SupervisorService) private readonly supervisor: SupervisorService,
     @Inject(AssemblerService) private readonly assembler: AssemblerService,
     @Inject(MessageRepository) private readonly messages: MessageRepository,
-    @Inject(InboxService) private readonly inbox: InboxService,
   ) {}
 
   handleConnection(_client: WebSocket): void {
@@ -115,8 +114,8 @@ export class DaemonGateway implements OnGatewayConnection, OnGatewayDisconnect, 
         log.info(`[gateway] ask: "${text.slice(0, 60)}"`);
         const systemPrompt = this.assembler.assemble(text);
 
-        // Push to inbox
-        this.inbox.push("websocket", text, {});
+        // WS messages persisted directly
+        this.messages.append({ role: "user", content: text });
 
         try {
           const { query } = await import("@anthropic-ai/claude-agent-sdk");

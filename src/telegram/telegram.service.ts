@@ -1,8 +1,10 @@
 import { Injectable, Inject, OnModuleInit, OnModuleDestroy } from "@nestjs/common";
 import { Telegraf } from "telegraf";
-import { InboxService } from "../inbox/inbox.service.js";
 import { TelegramStoreService } from "./telegram-store.service.js";
 import { log } from "../shared/logger.js";
+
+// Lazy-resolved to break circular dependency (ChannelModule <-> TelegramModule)
+let channelServiceRef: { post: (tag: string, content: string, chatId: number) => void } | null = null;
 
 @Injectable()
 export class TelegramService implements OnModuleInit, OnModuleDestroy {
@@ -10,10 +12,14 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
   private store: TelegramStoreService;
 
   constructor(
-    @Inject(InboxService) private readonly inbox: InboxService,
     @Inject(TelegramStoreService) store: TelegramStoreService,
   ) {
     this.store = store;
+  }
+
+  /** Called by ChannelModule after initialization to wire the circular dep */
+  setChannelService(svc: { post: (tag: string, content: string, chatId: number) => void }): void {
+    channelServiceRef = svc;
   }
 
   async onModuleInit(): Promise<void> {
@@ -111,13 +117,16 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
       if (!text || text.startsWith("/")) return;
 
       const chatId = ctx.message.chat.id;
-      const messageId = ctx.message.message_id;
 
       log.info(`[telegram] Message from ${telegramId}: "${text.slice(0, 50)}"`);
       await ctx.sendChatAction("typing").catch(() => {});
 
-      // Push to unified inbox — the main agent will handle it
-      this.inbox.push("telegram", text, { chatId, messageId, telegramId });
+      // Post to the shared channel — triggers the main agent
+      if (channelServiceRef) {
+        channelServiceRef.post("USER_TELEGRAM", text, chatId);
+      } else {
+        log.error("[telegram] Channel service not wired — message dropped");
+      }
     });
   }
 }

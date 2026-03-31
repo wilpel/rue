@@ -1,9 +1,11 @@
 import { Injectable, Inject } from "@nestjs/common";
 import { ClaudeProcessService } from "./claude-process.service.js";
 import { BusService } from "../bus/bus.service.js";
-import { InboxService } from "../inbox/inbox.service.js";
 import { HealthService } from "./health.service.js";
 import { log } from "../shared/logger.js";
+
+// Lazy-resolved to break circular dependency
+let channelServiceRef: { post: (tag: string, content: string, chatId: number) => void } | null = null;
 
 export interface DelegateInfo {
   id: string;
@@ -31,9 +33,13 @@ export class DelegateService {
   constructor(
     @Inject(ClaudeProcessService) private readonly processService: ClaudeProcessService,
     @Inject(BusService) private readonly bus: BusService,
-    @Inject(InboxService) private readonly inbox: InboxService,
     @Inject(HealthService) private readonly health: HealthService,
   ) {}
+
+  /** Called after init to wire channel dependency */
+  setChannelService(svc: { post: (tag: string, content: string, chatId: number) => void }): void {
+    channelServiceRef = svc;
+  }
 
   async spawn(task: string, chatId: number, messageId?: number): Promise<void> {
     const agentId = `delegate-${Date.now()}`;
@@ -100,7 +106,7 @@ export class DelegateService {
       log.info(`[delegate] Agent ${agentId} completed (${result.output.length} chars)`);
 
       if (result.output.trim()) {
-        this.inbox.push("delegate", result.output.trim(), { agentId, task, chatId, messageId });
+        if (channelServiceRef) channelServiceRef.post(`AGENT_DELEGATE_${agentId}`, result.output.trim(), chatId);
       }
 
       this.bus.emit("agent:completed", { id: agentId, result: result.output.slice(0, 200), cost: result.cost });
@@ -111,13 +117,7 @@ export class DelegateService {
       info.status = "failed";
       info.result = errMsg;
 
-      this.inbox.push("delegate", "Sorry, I ran into an issue with that task. Try again?", {
-        agentId,
-        task,
-        chatId,
-        messageId,
-        error: errMsg,
-      });
+      if (channelServiceRef) channelServiceRef.post(`AGENT_DELEGATE_${agentId}`, `Failed: ${errMsg}`, chatId);
       this.bus.emit("agent:failed", { id: agentId, error: errMsg, retryable: false });
       this.health.untrackAgent(agentId);
     } finally {

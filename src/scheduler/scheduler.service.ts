@@ -1,6 +1,5 @@
 import { Injectable, Inject, OnModuleInit, OnModuleDestroy } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service.js";
-import { InboxService } from "../inbox/inbox.service.js";
 import { DelegateService } from "../agents/delegate.service.js";
 import { jobs } from "../database/schema.js";
 import { eq, and, lte } from "drizzle-orm";
@@ -36,7 +35,6 @@ export class SchedulerService implements OnModuleInit, OnModuleDestroy {
 
   constructor(
     @Inject(DatabaseService) private readonly db: DatabaseService,
-    @Inject(InboxService) private readonly inbox: InboxService,
     @Inject(DelegateService) private readonly delegate: DelegateService,
   ) {}
 
@@ -75,11 +73,7 @@ export class SchedulerService implements OnModuleInit, OnModuleDestroy {
   private executeJob(job: typeof jobs.$inferSelect, now: number): void {
     log.info(`[scheduler] Firing job "${job.name}": ${job.task}`);
 
-    // Push to inbox so main agent knows
-    this.inbox.push("scheduler", `[Scheduled Job: ${job.name}] ${job.task}`, { jobId: job.id, jobName: job.name });
-
-    // Spawn delegate to do the actual work (fire-and-forget, no chatId needed for scheduler)
-    // For now scheduler jobs don't have a chatId — they push results to inbox
+    // Spawn delegate to do the actual work
     this.delegate.spawn(job.task, 0).catch(err => {
       log.error(`[scheduler] Job "${job.name}" agent failed: ${err instanceof Error ? err.message : err}`);
     });
