@@ -1,4 +1,4 @@
-import { Injectable } from "@nestjs/common";
+import { Injectable, Inject } from "@nestjs/common";
 import type { Lane } from "../shared/types.js";
 import { ConfigService } from "../config/config.service.js";
 
@@ -11,7 +11,7 @@ export interface LaneStats { totalActive: number; totalQueued: number; lanes: Re
 export class LaneQueueService {
   private lanes = new Map<string, LaneState>();
 
-  constructor(config: ConfigService) {
+  constructor(@Inject(ConfigService) config: ConfigService) {
     const c = config.lanes;
     for (const [lane, max] of Object.entries(c)) {
       this.lanes.set(lane, { queue: [], active: 0, maxConcurrent: max });

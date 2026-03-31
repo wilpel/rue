@@ -9,6 +9,8 @@ import { AgentsModule } from "./agents/agents.module.js";
 import { GatewayModule } from "./gateway/gateway.module.js";
 import { ApiModule } from "./api/api.module.js";
 import { TelegramModule } from "./telegram/telegram.module.js";
+import { SchedulerModule } from "./scheduler/scheduler.module.js";
+import { PlannerModule } from "./planner/planner.module.js";
 
 @Module({
   imports: [
@@ -22,6 +24,8 @@ import { TelegramModule } from "./telegram/telegram.module.js";
     GatewayModule,
     ApiModule,
     TelegramModule,
+    SchedulerModule,
+    PlannerModule,
   ],
 })
 export class AppModule {}
