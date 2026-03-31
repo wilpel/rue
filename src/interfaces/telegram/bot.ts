@@ -216,7 +216,7 @@ export class TelegramBot {
           console.log(`[telegram] Sent response to ${telegramId} (${cleaned.length} chars)`);
         };
 
-        await this.askStreaming(telegramId, prompt, 180_000, sendReply);
+        await this.askAndReply(telegramId, prompt, 180_000, sendReply);
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         console.error(`[telegram] Failed for ${telegramId}: ${msg}`);
@@ -256,71 +256,45 @@ export class TelegramBot {
   }
 
   /**
-   * Stream-aware ask: sends the AI's first text burst immediately, then
-   * sends subsequent text bursts as separate messages. This way the user
-   * sees "On it." right away while the AI does tool work in the background.
-   *
-   * A "burst" is detected by a pause in streaming (no new chunks for 1.5s).
+   * Ask the daemon and collect the full response, then send it all at once.
+   * The user sees the "typing..." indicator while the AI works.
    */
-  private async askStreaming(
+  private async askAndReply(
     telegramId: number,
     prompt: string,
     timeoutMs: number,
     sendMessage: (text: string) => Promise<void>,
   ): Promise<void> {
     const client = await this.getOrCreateClient(telegramId);
+    let fullResponse = "";
 
-    let buffer = "";
-    let flushTimer: ReturnType<typeof setTimeout> | null = null;
-    let sentFirst = false;
-    // After the first message is sent, use a longer delay for follow-ups
-    // since tool execution gaps can be long.
-    const FIRST_FLUSH_MS = 8000;  // wait 8s to collect the full initial response (ack + context)
-    const LATER_FLUSH_MS = 8000;  // 8s pause = likely a new text section after tool work
-
-    const flush = async () => {
-      const text = buffer.replace(/\[no_?response\]/gi, "").trim();
-      buffer = "";
-      if (text) {
-        console.log(`[telegram] Flushing${sentFirst ? " follow-up" : " first"} to ${telegramId}: "${text.slice(0, 80)}"`);
-        sentFirst = true;
-        await sendMessage(text);
-      }
-    };
-
-    const onChunk = (chunk: string) => {
-      buffer += chunk;
-      // Reset the flush timer on each chunk — flush only after a pause
-      if (flushTimer) clearTimeout(flushTimer);
-      const delay = sentFirst ? LATER_FLUSH_MS : FIRST_FLUSH_MS;
-      flushTimer = setTimeout(() => { flush().catch(() => {}); }, delay);
-    };
-
-    const doAsk = async (retry: boolean): Promise<void> => {
+    const doAsk = async (retry: boolean): Promise<string> => {
       if (retry) this.disconnectClient(telegramId);
       const c = retry ? await this.getOrCreateClient(telegramId) : client;
-
-      await c.ask(prompt, { onStream: onChunk });
+      let collected = "";
+      const result = await c.ask(prompt, { onStream: (chunk) => { collected += chunk; } });
+      return result.output || collected;
     };
 
     const askPromise = doAsk(false).catch(async (err) => {
       const msg = err instanceof Error ? err.message : String(err);
-      console.log(`[telegram] First attempt failed (${msg}), retrying with fresh connection...`);
+      console.log(`[telegram] First attempt failed (${msg}), retrying...`);
       return doAsk(true);
     });
 
-    // Race against hard timeout (clean up the timer to avoid leaks)
     let timeoutHandle: ReturnType<typeof setTimeout>;
-    await Promise.race([
+    fullResponse = await Promise.race([
       askPromise,
-      new Promise<never>((_, reject) => {
+      new Promise<string>((_, reject) => {
         timeoutHandle = setTimeout(() => reject(new Error("Request timed out")), timeoutMs);
       }),
     ]).finally(() => clearTimeout(timeoutHandle));
 
-    // Flush any remaining buffered text
-    if (flushTimer) clearTimeout(flushTimer);
-    if (buffer.trim()) await flush();
+    const cleaned = fullResponse.replace(/\[no_?response\]/gi, "").trim();
+    if (cleaned) {
+      console.log(`[telegram] Sending response to ${telegramId} (${cleaned.length} chars)`);
+      await sendMessage(cleaned);
+    }
   }
 
   private async getOrCreateClient(telegramId: number): Promise<DaemonClient> {
