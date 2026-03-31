@@ -2,6 +2,9 @@ import { Telegraf } from "telegraf";
 import { DaemonClient } from "../cli/client.js";
 import { TelegramStore } from "./store.js";
 import type { EventBus } from "../../bus/bus.js";
+import * as fs from "node:fs";
+import * as path from "node:path";
+import * as os from "node:os";
 
 export interface TelegramBotConfig {
   botToken: string;
@@ -128,49 +131,128 @@ export class TelegramBot {
       } catch { ctx.reply("Can't reach daemon. Is it running?"); }
     });
 
-    // Main message handler
+    // Main message handler — text
     this.bot.on("text", async (ctx) => {
-      const telegramId = ctx.from.id;
-      if (!this.store.isUserPaired(telegramId)) {
-        ctx.reply("You're not paired yet. Run `rue telegram pair` in your terminal to get a code, then send /pair <code> here.");
-        return;
-      }
-
       const text = ctx.message.text;
       if (!text || text.startsWith("/")) return;
-
-      const messageId = ctx.message.message_id;
-      const chatId = ctx.message.chat.id;
-
-      await this.enqueueMessage(telegramId, async () => {
-        console.log(`[telegram] Processing message from ${telegramId}: "${text.slice(0, 50)}"`);
-
-        // Show typing immediately
-        await ctx.sendChatAction("typing").catch(() => {});
-
-        const prompt = `[Telegram message from chat_id=${chatId} message_id=${messageId}]\n${text}`;
-
-        try {
-          const sendReply = async (msg: string) => {
-            const cleaned = msg.replace(/\[no_?response\]/gi, "").trim();
-            if (!cleaned) return;
-            await this.sendLongMessage(ctx, cleaned);
-            console.log(`[telegram] Sent response to ${telegramId} (${cleaned.length} chars)`);
-          };
-
-          await this.askStreaming(telegramId, prompt, 180_000, sendReply);
-        } catch (err) {
-          const msg = err instanceof Error ? err.message : String(err);
-          console.error(`[telegram] Failed for ${telegramId}: ${msg}`);
-          if (msg.includes("timed out")) {
-            await ctx.reply("I'm taking too long on this. Let me try again — send your message once more.").catch(() => {});
-          } else {
-            await ctx.reply("Something went wrong. Try again.").catch(() => {});
-          }
-          this.disconnectClient(telegramId);
-        }
-      });
+      await this.handleIncoming(ctx, text);
     });
+
+    // Photo handler
+    this.bot.on("photo", async (ctx) => {
+      const photo = ctx.message.photo;
+      const largest = photo[photo.length - 1]; // highest resolution
+      const caption = ctx.message.caption ?? "";
+      const filePath = await this.downloadFile(ctx, largest.file_id, "photo.jpg");
+      if (!filePath) { ctx.reply("Couldn't download the image."); return; }
+      const prompt = `${caption ? caption + "\n\n" : ""}[User sent an image, saved at: ${filePath}]\nUse the Read tool to view this image file.`;
+      await this.handleIncoming(ctx, prompt);
+    });
+
+    // Document handler
+    this.bot.on("document", async (ctx) => {
+      const doc = ctx.message.document;
+      if (!doc) return;
+      const caption = ctx.message.caption ?? "";
+      const fileName = doc.file_name ?? "document";
+      const filePath = await this.downloadFile(ctx, doc.file_id, fileName);
+      if (!filePath) { ctx.reply("Couldn't download the file."); return; }
+      const prompt = `${caption ? caption + "\n\n" : ""}[User sent a file "${fileName}", saved at: ${filePath}]\nUse the Read tool to view this file.`;
+      await this.handleIncoming(ctx, prompt);
+    });
+
+    // Voice message handler
+    this.bot.on("voice", async (ctx) => {
+      const voice = ctx.message.voice;
+      const filePath = await this.downloadFile(ctx, voice.file_id, "voice.ogg");
+      if (!filePath) { ctx.reply("Couldn't download the voice message."); return; }
+      const prompt = `[User sent a voice message, saved at: ${filePath}]\nNote: This is an audio file. Acknowledge that you received a voice message but explain you can't listen to audio yet.`;
+      await this.handleIncoming(ctx, prompt);
+    });
+
+    // Video handler
+    this.bot.on("video", async (ctx) => {
+      const video = ctx.message.video;
+      const caption = ctx.message.caption ?? "";
+      const filePath = await this.downloadFile(ctx, video.file_id, "video.mp4");
+      if (!filePath) { ctx.reply("Couldn't download the video."); return; }
+      const prompt = `${caption ? caption + "\n\n" : ""}[User sent a video, saved at: ${filePath}]\nNote: Acknowledge that you received a video but explain you can't watch videos yet.`;
+      await this.handleIncoming(ctx, prompt);
+    });
+
+    // Sticker handler
+    this.bot.on("sticker", async (ctx) => {
+      const emoji = ctx.message.sticker.emoji ?? "sticker";
+      await this.handleIncoming(ctx, `[User sent a sticker: ${emoji}]`);
+    });
+  }
+
+  /**
+   * Shared handler for all incoming messages (text, photos, documents, etc.)
+   */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private async handleIncoming(ctx: any, content: string): Promise<void> {
+    const telegramId = ctx.from.id;
+    if (!this.store.isUserPaired(telegramId)) {
+      ctx.reply("You're not paired yet. Run `rue telegram pair` in your terminal to get a code, then send /pair <code> here.");
+      return;
+    }
+
+    const messageId = ctx.message.message_id;
+    const chatId = ctx.message.chat.id;
+
+    await this.enqueueMessage(telegramId, async () => {
+      console.log(`[telegram] Processing message from ${telegramId}: "${content.slice(0, 50)}"`);
+
+      await ctx.sendChatAction("typing").catch(() => {});
+
+      const prompt = `[Telegram message from chat_id=${chatId} message_id=${messageId}]\n${content}`;
+
+      try {
+        const sendReply = async (msg: string) => {
+          const cleaned = msg.replace(/\[no_?response\]/gi, "").trim();
+          if (!cleaned) return;
+          await this.sendLongMessage(ctx, cleaned);
+          console.log(`[telegram] Sent response to ${telegramId} (${cleaned.length} chars)`);
+        };
+
+        await this.askStreaming(telegramId, prompt, 180_000, sendReply);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.error(`[telegram] Failed for ${telegramId}: ${msg}`);
+        if (msg.includes("timed out")) {
+          await ctx.reply("I'm taking too long on this. Let me try again — send your message once more.").catch(() => {});
+        } else {
+          await ctx.reply("Something went wrong. Try again.").catch(() => {});
+        }
+        this.disconnectClient(telegramId);
+      }
+    });
+  }
+
+  /**
+   * Download a Telegram file to a temp directory. Returns the local file path.
+   */
+  private async downloadFile(
+    ctx: { telegram: { getFileLink: (fileId: string) => Promise<URL> } },
+    fileId: string,
+    fileName: string,
+  ): Promise<string | null> {
+    try {
+      const url = await ctx.telegram.getFileLink(fileId);
+      const tmpDir = path.join(os.tmpdir(), "rue-telegram-files");
+      fs.mkdirSync(tmpDir, { recursive: true });
+      const filePath = path.join(tmpDir, `${Date.now()}-${fileName}`);
+      const response = await fetch(url.toString());
+      if (!response.ok) return null;
+      const buffer = Buffer.from(await response.arrayBuffer());
+      fs.writeFileSync(filePath, buffer);
+      console.log(`[telegram] Downloaded file: ${filePath} (${buffer.length} bytes)`);
+      return filePath;
+    } catch (err) {
+      console.error(`[telegram] File download failed: ${err instanceof Error ? err.message : err}`);
+      return null;
+    }
   }
 
   /**
