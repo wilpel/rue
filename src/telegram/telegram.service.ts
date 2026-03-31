@@ -4,7 +4,7 @@ import { TelegramStoreService } from "./telegram-store.service.js";
 import { log } from "../shared/logger.js";
 
 // Lazy-resolved to break circular dependency (ChannelModule <-> TelegramModule)
-let channelServiceRef: { post: (tag: string, content: string, chatId: number) => void } | null = null;
+let channelServiceRef: { post: (tag: string, content: string, chatId: number, extra?: Record<string, unknown>) => void } | null = null;
 
 @Injectable()
 export class TelegramService implements OnModuleInit, OnModuleDestroy {
@@ -18,7 +18,7 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
   }
 
   /** Called by ChannelModule after initialization to wire the circular dep */
-  setChannelService(svc: { post: (tag: string, content: string, chatId: number) => void }): void {
+  setChannelService(svc: { post: (tag: string, content: string, chatId: number, extra?: Record<string, unknown>) => void }): void {
     channelServiceRef = svc;
   }
 
@@ -117,13 +117,14 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
       if (!text || text.startsWith("/")) return;
 
       const chatId = ctx.message.chat.id;
+      const messageId = ctx.message.message_id;
 
       log.info(`[telegram] Message from ${telegramId}: "${text.slice(0, 50)}"`);
       await ctx.sendChatAction("typing").catch(() => {});
 
       // Post to the shared channel — triggers the main agent
       if (channelServiceRef) {
-        channelServiceRef.post("USER_TELEGRAM", text, chatId);
+        channelServiceRef.post("USER_TELEGRAM", text, chatId, { messageId });
       } else {
         log.error("[telegram] Channel service not wired — message dropped");
       }

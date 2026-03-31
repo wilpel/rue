@@ -51,12 +51,12 @@ export class ChannelService implements OnModuleInit {
    * Post a message to the channel. Triggers the main agent if it's from
    * a user or delegate (not from the agent itself).
    */
-  post(tag: string, content: string, chatId: number): void {
+  post(tag: string, content: string, chatId: number, extra?: Record<string, unknown>): void {
     // Store in DB
     this.messages.append({
       role: "channel" as any,
       content,
-      metadata: { tag, chatId },
+      metadata: { tag, chatId, ...extra },
     });
 
     // Don't trigger agent for its own messages
@@ -146,6 +146,13 @@ export class ChannelService implements OnModuleInit {
         // Send to Telegram
         await this.telegram.sendMessage(chatId, cleaned);
         log.info(`[channel] Agent responded (${cleaned.length} chars)`);
+      } else {
+        // No text response — react to the last user message with 👍
+        const lastUserMsgId = this.getLastUserMessageId(chatId);
+        if (lastUserMsgId) {
+          await this.telegram.reactToMessage(chatId, lastUserMsgId, "👍").catch(() => {});
+          log.info(`[channel] No text response — reacted with 👍`);
+        }
       }
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : String(err);
@@ -158,6 +165,20 @@ export class ChannelService implements OnModuleInit {
 
       await this.telegram.sendMessage(chatId, "Something went wrong. Try again.").catch(() => {});
     }
+  }
+
+  /**
+   * Find the messageId of the last user message on a chat (for reactions).
+   */
+  private getLastUserMessageId(chatId: number): number | null {
+    const recent = this.messages.recent(10);
+    const userMsgs = recent.filter(m =>
+      (m.metadata as any)?.chatId === chatId &&
+      (m.metadata as any)?.tag === "USER_TELEGRAM" &&
+      (m.metadata as any)?.messageId
+    );
+    if (userMsgs.length === 0) return null;
+    return (userMsgs[userMsgs.length - 1].metadata as any).messageId as number;
   }
 
   private async runClaudeQuery(
