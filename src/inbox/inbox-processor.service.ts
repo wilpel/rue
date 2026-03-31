@@ -7,18 +7,28 @@ import { log } from "../shared/logger.js";
 import type { SDKSystemMessage, SDKStreamEvent, SDKAssistantMessage, SDKResultMessage } from "../shared/sdk-types.js";
 
 /**
- * Processes inbox messages and routes responses.
+ * Processes inbox messages with batching and session continuity.
  *
- * - Telegram user messages: run Claude (with session resume for history), send response
- * - Delegate/scheduler results: forward directly to Telegram (no Claude needed)
- *
- * Each message is handled concurrently — never blocks the thread.
- * Session continuity via Claude SDK resume gives the agent full conversation history.
+ * Design:
+ * - Telegram messages from the same chat are batched (2s window) so rapid
+ *   messages get combined into one Claude query
+ * - Queries run sequentially per chat (with session resume) so the agent
+ *   has full conversation history
+ * - Delegate/scheduler results bypass Claude — delivered directly
+ * - Main agent has Bash-only + 4 turns: dispatches work, never blocks
  */
 @Injectable()
 export class InboxProcessorService implements OnModuleInit {
   private lastSessionId: string | undefined;
   private lastSessionTime = 0;
+
+  // Batching: accumulate telegram messages per chat, flush after a pause
+  private pendingBatches = new Map<number, { messages: InboxMessage[]; timer: ReturnType<typeof setTimeout> }>();
+  private static readonly BATCH_WINDOW_MS = 2000;
+
+  // Sequential processing per chat: queue + lock
+  private chatQueues = new Map<number, Array<() => Promise<void>>>();
+  private chatProcessing = new Set<number>();
 
   constructor(
     @Inject(InboxService) private readonly inbox: InboxService,
@@ -29,7 +39,6 @@ export class InboxProcessorService implements OnModuleInit {
 
   onModuleInit(): void {
     this.inbox.onMessage((msg) => {
-      // Fire-and-forget — never block the inbox
       this.handle(msg).catch(err => {
         log.error(`[inbox-processor] Failed: ${err instanceof Error ? err.message : err}`);
       });
@@ -39,7 +48,7 @@ export class InboxProcessorService implements OnModuleInit {
   private async handle(msg: InboxMessage): Promise<void> {
     switch (msg.source) {
       case "telegram":
-        await this.handleTelegram(msg);
+        this.batchTelegramMessage(msg);
         break;
       case "delegate":
         await this.handleDelegateResult(msg);
@@ -47,21 +56,84 @@ export class InboxProcessorService implements OnModuleInit {
       case "scheduler":
         await this.handleSchedulerResult(msg);
         break;
-      default:
-        log.info(`[inbox-processor] Unhandled source: ${msg.source}`);
     }
   }
 
-  private async handleTelegram(msg: InboxMessage): Promise<void> {
+  /**
+   * Batch telegram messages: wait 2s for more messages before processing.
+   * This groups "i want an image" + "of playground dev" + "the office one"
+   * into a single Claude query.
+   */
+  private batchTelegramMessage(msg: InboxMessage): void {
     const chatId = msg.metadata.chatId as number;
 
-    log.info(`[inbox-processor] Processing: "${msg.content.slice(0, 50)}"`);
+    let batch = this.pendingBatches.get(chatId);
+    if (batch) {
+      clearTimeout(batch.timer);
+      batch.messages.push(msg);
+    } else {
+      batch = { messages: [msg], timer: null as unknown as ReturnType<typeof setTimeout> };
+      this.pendingBatches.set(chatId, batch);
+    }
 
-    const systemPrompt = this.assembler.assemble(msg.content);
-    const prefix = this.inbox.formatPrefix(msg.source);
-    const prompt = `${prefix} ${msg.content}`;
+    batch.timer = setTimeout(() => {
+      this.pendingBatches.delete(chatId);
+      this.enqueueChatWork(chatId, () => this.processTelegramBatch(chatId, batch!.messages));
+    }, InboxProcessorService.BATCH_WINDOW_MS);
+  }
 
-    // Resume existing session for conversation continuity
+  /**
+   * Sequential queue per chat: ensures session resume works
+   * (can't run two queries on the same session concurrently).
+   */
+  private enqueueChatWork(chatId: number, work: () => Promise<void>): void {
+    let queue = this.chatQueues.get(chatId);
+    if (!queue) { queue = []; this.chatQueues.set(chatId, queue); }
+    queue.push(work);
+
+    if (!this.chatProcessing.has(chatId)) {
+      this.drainChatQueue(chatId);
+    }
+  }
+
+  private async drainChatQueue(chatId: number): Promise<void> {
+    this.chatProcessing.add(chatId);
+    const queue = this.chatQueues.get(chatId);
+
+    while (queue && queue.length > 0) {
+      const work = queue.shift()!;
+      try {
+        await work();
+      } catch (err) {
+        log.error(`[inbox-processor] Chat ${chatId} work failed: ${err instanceof Error ? err.message : err}`);
+      }
+    }
+
+    this.chatProcessing.delete(chatId);
+    this.chatQueues.delete(chatId);
+  }
+
+  /**
+   * Process a batch of telegram messages as one Claude query.
+   */
+  private async processTelegramBatch(chatId: number, batch: InboxMessage[]): Promise<void> {
+    // Combine messages into one prompt
+    const combined = batch.map(m => m.content).join("\n");
+    const firstMsg = batch[0];
+
+    // Include chat_id and message_id from the LAST message (most recent)
+    const lastMsg = batch[batch.length - 1];
+    const msgId = lastMsg.metadata.messageId as number | undefined;
+
+    log.info(`[inbox-processor] Processing batch (${batch.length} msg): "${combined.slice(0, 60)}"`);
+
+    const systemPrompt = this.assembler.assemble(combined);
+
+    // Build prompt with message context
+    const chatIdStr = firstMsg.metadata.chatId;
+    const messageIdStr = msgId ?? "";
+    const prompt = `[Telegram message from chat_id=${chatIdStr} message_id=${messageIdStr}]\n${combined}`;
+
     const resumeId = (Date.now() - this.lastSessionTime < 1800_000) ? this.lastSessionId : undefined;
 
     try {
@@ -115,7 +187,7 @@ export class InboxProcessorService implements OnModuleInit {
     const abortController = new AbortController();
     const timeoutTimer = setTimeout(() => {
       if (!abortController.signal.aborted) abortController.abort();
-    }, 300_000);
+    }, 60_000); // 60s timeout — main agent should be fast
 
     try {
       const q = query({
@@ -124,13 +196,11 @@ export class InboxProcessorService implements OnModuleInit {
           cwd: process.cwd(),
           systemPrompt,
           model: "opus",
-          // Main agent is a dispatcher: respond + delegate via Bash skill calls.
-          // Heavy tools (WebSearch, WebFetch, Read, etc.) are for delegate agents only.
           tools: ["Bash"],
           allowedTools: ["Bash"],
           permissionMode: "bypassPermissions",
           allowDangerouslySkipPermissions: true,
-          maxTurns: 4, // acknowledge + delegate + confirm, never block
+          maxTurns: 4,
           abortController,
           includePartialMessages: true,
           settingSources: [],
