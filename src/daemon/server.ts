@@ -155,6 +155,12 @@ export class DaemonServer {
     this.bus.emit("system:started", {});
     log.info("[rue] Bus + scheduler started");
 
+    // Log memory usage every 5 minutes for leak detection
+    this._memoryLogger = setInterval(() => {
+      const mem = process.memoryUsage();
+      log.info("[rue] Memory", { rss: Math.round(mem.rss / 1024 / 1024) + "MB", heap: Math.round(mem.heapUsed / 1024 / 1024) + "MB" });
+    }, 300_000);
+
     // Sync identity from MEMORY.md if available
     try {
       const memPath = path.join(os.homedir(), ".rue", "memory", "MEMORY.md");
@@ -200,6 +206,7 @@ export class DaemonServer {
     } catch {}
 
     if (this._taskWatcher) clearInterval(this._taskWatcher);
+    if (this._memoryLogger) clearInterval(this._memoryLogger);
     this.healthMonitor.stop();
     this.scheduler.stop();
     if (this.telegramBot) await this.telegramBot.stop();
@@ -668,6 +675,7 @@ export class DaemonServer {
   // ── Task Watcher — auto-spawn agents on new tasks ──────────────
 
   private _taskWatcher: NodeJS.Timeout | null = null;
+  private _memoryLogger: NodeJS.Timeout | null = null;
 
   private activeProjectAgents = new Set<string>(); // track running agents by "project:taskFile"
   private delegateAgents = new Map<string, { task: string; status: string; startedAt: number; result?: string; activity: string[] }>(); // track delegate agents

@@ -17,6 +17,9 @@ export class TelegramBot {
   private activeClients = new Map<number, DaemonClient>();
   private messageQueues = new Map<number, Array<() => Promise<void>>>();
   private processingUsers = new Set<number>();
+  private healthTimer: ReturnType<typeof setInterval> | null = null;
+  private lastUpdateAt = Date.now();
+  private stopped = false;
 
   constructor(config: TelegramBotConfig) {
     this.bot = new Telegraf(config.botToken, {
@@ -38,18 +41,60 @@ export class TelegramBot {
   getStore(): TelegramStore { return this.store; }
 
   async start(): Promise<void> {
-    await this.bot.launch();
+    this.stopped = false;
+    await this.launchBot();
+    this.startHealthMonitor();
     console.log("[telegram] Bot started");
   }
 
   async stop(): Promise<void> {
+    this.stopped = true;
+    if (this.healthTimer) { clearInterval(this.healthTimer); this.healthTimer = null; }
     this.bot.stop("shutdown");
     for (const client of this.activeClients.values()) client.disconnect();
     this.activeClients.clear();
     console.log("[telegram] Bot stopped");
   }
 
+  private async launchBot(): Promise<void> {
+    await this.bot.launch({
+      dropPendingUpdates: false,
+      allowedUpdates: ["message"],
+    });
+    this.lastUpdateAt = Date.now();
+  }
+
+  /**
+   * Monitor Telegraf polling health. If no updates received for 5 minutes,
+   * assume the long-poll connection died and restart the bot.
+   */
+  private startHealthMonitor(): void {
+    const STALE_THRESHOLD_MS = 300_000; // 5 minutes with no updates = probably dead
+    const CHECK_INTERVAL_MS = 60_000;   // check every minute
+
+    this.healthTimer = setInterval(async () => {
+      if (this.stopped) return;
+      const elapsed = Date.now() - this.lastUpdateAt;
+      if (elapsed > STALE_THRESHOLD_MS) {
+        console.log(`[telegram] No updates for ${Math.round(elapsed / 1000)}s — restarting polling`);
+        try {
+          this.bot.stop("reconnect");
+          await this.launchBot();
+          console.log("[telegram] Polling restarted successfully");
+        } catch (err) {
+          console.error(`[telegram] Restart failed: ${err instanceof Error ? err.message : err}`);
+        }
+      }
+    }, CHECK_INTERVAL_MS);
+  }
+
   private setupHandlers(): void {
+    // Track every update to detect stale polling
+    this.bot.use((_ctx, next) => {
+      this.lastUpdateAt = Date.now();
+      return next();
+    });
+
     this.bot.start((ctx) => {
       ctx.reply("Hey! I'm Rue.\n\nTo use me, you need a pairing code. Run `rue telegram pair` in your terminal, then send me:\n\n/pair <code>");
     });
@@ -182,13 +227,14 @@ export class TelegramBot {
       return doAsk(true);
     });
 
-    // Race against hard timeout
+    // Race against hard timeout (clean up the timer to avoid leaks)
+    let timeoutHandle: ReturnType<typeof setTimeout>;
     await Promise.race([
       askPromise,
-      new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error("Request timed out")), timeoutMs)
-      ),
-    ]);
+      new Promise<never>((_, reject) => {
+        timeoutHandle = setTimeout(() => reject(new Error("Request timed out")), timeoutMs);
+      }),
+    ]).finally(() => clearTimeout(timeoutHandle));
 
     // Flush any remaining buffered text
     if (flushTimer) clearTimeout(flushTimer);
