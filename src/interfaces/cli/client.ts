@@ -1,6 +1,6 @@
 import WebSocket from "ws";
 import { frameId } from "../../shared/ids.js";
-import type { DaemonFrame } from "../../daemon/protocol.js";
+import type { DaemonFrame } from "../../gateway/protocol.js";
 
 type PendingRequest = {
   resolve: (data: unknown) => void;

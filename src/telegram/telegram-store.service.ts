@@ -31,6 +31,8 @@ export class TelegramStoreService {
 
   setBotToken(token: string): void { const config = this.load(); config.botToken = token; this.save(config); }
 
+  getPairedUsers(): PairedUser[] { return this.load().pairedUsers; }
+
   isUserPaired(telegramId: number): boolean { return this.load().pairedUsers.some(u => u.telegramId === telegramId); }
 
   addPairedUser(telegramId: number, username?: string): void {

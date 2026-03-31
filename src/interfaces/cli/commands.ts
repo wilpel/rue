@@ -1,7 +1,7 @@
 import { Command } from "commander";
 import { DaemonClient } from "./client.js";
 import { loadConfig } from "../../shared/config.js";
-import { TelegramStore } from "../telegram/store.js";
+import { TelegramStoreService } from "../../telegram/telegram-store.service.js";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
@@ -175,7 +175,7 @@ export function createCLI(): Command {
     .description("Configure the Telegram bot token")
     .action((botToken: string) => {
       const config = loadConfig(CONFIG_PATH);
-      const store = new TelegramStore(config.dataDir);
+      const store = new TelegramStoreService(config.dataDir);
       store.setBotToken(botToken);
       console.log("Telegram bot token saved.");
       console.log("Restart the daemon to activate the bot.");
@@ -186,7 +186,7 @@ export function createCLI(): Command {
     .description("Generate a pairing code for Telegram")
     .action(() => {
       const config = loadConfig(CONFIG_PATH);
-      const store = new TelegramStore(config.dataDir);
+      const store = new TelegramStoreService(config.dataDir);
 
       if (!store.getBotToken()) {
         console.error("No bot token configured. Run: rue telegram setup <token>");
@@ -205,7 +205,7 @@ export function createCLI(): Command {
     .description("List paired Telegram users")
     .action(() => {
       const config = loadConfig(CONFIG_PATH);
-      const store = new TelegramStore(config.dataDir);
+      const store = new TelegramStoreService(config.dataDir);
       const users = store.getPairedUsers();
 
       if (users.length === 0) {
@@ -225,7 +225,7 @@ export function createCLI(): Command {
     .description("Remove a paired Telegram user by their ID")
     .action((telegramId: string) => {
       const config = loadConfig(CONFIG_PATH);
-      const store = new TelegramStore(config.dataDir);
+      const store = new TelegramStoreService(config.dataDir);
       const id = parseInt(telegramId, 10);
       if (isNaN(id)) {
         console.error("Invalid Telegram ID.");
@@ -243,7 +243,7 @@ export function createCLI(): Command {
     .description("Show Telegram bot configuration status")
     .action(() => {
       const config = loadConfig(CONFIG_PATH);
-      const store = new TelegramStore(config.dataDir);
+      const store = new TelegramStoreService(config.dataDir);
       const token = store.getBotToken();
       const users = store.getPairedUsers();
 
