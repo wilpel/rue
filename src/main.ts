@@ -1,9 +1,11 @@
 import "reflect-metadata";
 import { NestFactory } from "@nestjs/core";
+import type { INestApplication } from "@nestjs/common";
 import { AppModule } from "./app.module.js";
 import { ConfigService } from "./config/config.service.js";
 
-async function bootstrap(): Promise<void> {
+export async function bootstrapNest(): Promise<INestApplication> {
+  await import("reflect-metadata");
   const app = await NestFactory.create(AppModule);
   const config = app.get(ConfigService);
 
@@ -19,6 +21,6 @@ async function bootstrap(): Promise<void> {
   };
   process.on("SIGINT", shutdown);
   process.on("SIGTERM", shutdown);
-}
 
-bootstrap();
+  return app;
+}

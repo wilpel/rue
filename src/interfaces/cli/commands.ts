@@ -1,6 +1,5 @@
 import { Command } from "commander";
 import { DaemonClient } from "./client.js";
-import { DaemonServer } from "../../daemon/server.js";
 import { loadConfig } from "../../shared/config.js";
 import { TelegramStore } from "../telegram/store.js";
 import * as fs from "node:fs";
@@ -128,18 +127,8 @@ export function createCLI(): Command {
     .description("Start the daemon")
     .option("-f, --foreground", "Run in foreground")
     .action(async () => {
-      const config = loadConfig(CONFIG_PATH);
-      const server = new DaemonServer({ port: config.port, dataDir: config.dataDir });
-      console.log(`Starting Rue daemon on port ${config.port}...`);
-      await server.start();
-      console.log(`Daemon running. PID: ${process.pid}`);
-      const shutdown = async () => {
-        console.log("\nShutting down...");
-        await server.stop();
-        process.exit(0);
-      };
-      process.on("SIGINT", shutdown);
-      process.on("SIGTERM", shutdown);
+      const { bootstrapNest } = await import("../../main.js");
+      await bootstrapNest();
     });
 
   daemon.command("stop").description("Stop the daemon").action(async () => {
@@ -173,14 +162,8 @@ export function createCLI(): Command {
       }
     } catch {}
     // Start
-    const config = loadConfig(CONFIG_PATH);
-    const server = new DaemonServer({ port: config.port, dataDir: config.dataDir });
-    console.log(`Starting Rue daemon on port ${config.port}...`);
-    await server.start();
-    console.log(`Daemon running. PID: ${process.pid}`);
-    const shutdown = async () => { console.log("\nShutting down..."); await server.stop(); process.exit(0); };
-    process.on("SIGINT", shutdown);
-    process.on("SIGTERM", shutdown);
+    const { bootstrapNest } = await import("../../main.js");
+    await bootstrapNest();
   });
 
   // ── Telegram commands ──────────────────────────────────────────
