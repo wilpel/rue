@@ -50,7 +50,7 @@ const ConfigSchema = z.object({
     }),
     agent: z.string(),
   })).default([]),
-  agents: z.record(z.object({
+  agents: z.record(z.string(), z.object({
     systemPrompt: z.string(),
     personality: z.string().optional(),
     tools: z.array(z.string()),

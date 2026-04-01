@@ -1,4 +1,4 @@
-import { Controller, Get } from "@nestjs/common";
+import { Controller, Get, Inject } from "@nestjs/common";
 import { SupervisorService } from "../agents/supervisor.service.js";
 import { MessageRepository } from "../memory/message.repository.js";
 import { BusPersistenceService } from "../bus/bus-persistence.service.js";
@@ -6,9 +6,9 @@ import { BusPersistenceService } from "../bus/bus-persistence.service.js";
 @Controller("api")
 export class StatusController {
   constructor(
-    private readonly supervisor: SupervisorService,
-    private readonly messages: MessageRepository,
-    private readonly persistence: BusPersistenceService,
+    @Inject(SupervisorService) private readonly supervisor: SupervisorService,
+    @Inject(MessageRepository) private readonly messages: MessageRepository,
+    @Inject(BusPersistenceService) private readonly persistence: BusPersistenceService,
   ) {}
 
   @Get("status")
