@@ -60,6 +60,21 @@ export function App({ client }: AppProps) {
     }).catch(() => {});
   }, [client]);
 
+  // Listen for delegate results (async responses from background agents)
+  useEffect(() => {
+    const unsub = client.onNotify((title, body) => {
+      if (title === "Delegate result" && body) {
+        setMessages((prev) => [...prev, {
+          id: `delegate-${Date.now()}`,
+          role: "assistant",
+          content: body,
+          timestamp: Date.now(),
+        }]);
+      }
+    });
+    return unsub;
+  }, [client]);
+
   // Subscribe to agent events
   useEffect(() => {
     client.subscribe(["agent:*", "task:*", "system:*", "delegate:*"]);

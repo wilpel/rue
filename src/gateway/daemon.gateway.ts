@@ -64,6 +64,17 @@ export class DaemonGateway implements OnGatewayConnection, OnGatewayDisconnect, 
       let messageCount = 0;
       let lastReset = Date.now();
 
+      // Auto-forward delegate results as notify frames so TUI can show them
+      const unsub = this.bus.on("delegate:result" as any, (payload: { agentId: string; output: string; chatId: string | number }) => {
+        if (ws.readyState === ws.OPEN) {
+          ws.send(serializeDaemonFrame({ type: "notify", severity: "info", title: "Delegate result", body: payload.output }));
+          this.messages.append({ role: "assistant", content: payload.output });
+        }
+      });
+      let unsubs = wsUnsubscribers.get(ws);
+      if (!unsubs) { unsubs = []; wsUnsubscribers.set(ws, unsubs); }
+      unsubs.push(unsub);
+
       ws.on("message", async (data: Buffer) => {
         const now = Date.now();
         if (now - lastReset > 60_000) { messageCount = 0; lastReset = now; }
@@ -115,7 +126,7 @@ export class DaemonGateway implements OnGatewayConnection, OnGatewayDisconnect, 
 
         // Emit agent event so sidebar sees activity
         const agentId = `gateway-${Date.now()}`;
-        this.bus.emit("agent:spawned", { id: agentId, task: text.slice(0, 80), lane: "main" });
+        this.bus.emit("agent:spawned", { id: agentId, task: "Main agent", lane: "main" });
 
         try {
           const existingSession = sessionMap.get(ws) ?? (Date.now() - lastSessionTime < 1800_000 ? lastSessionId : undefined);

@@ -14,6 +14,7 @@ export class DaemonClient {
   private ws: WebSocket | null = null;
   private pending = new Map<string, PendingRequest>();
   private eventHandlers: EventHandler[] = [];
+  private notifyHandlers: Array<(title: string, body: string) => void> = [];
 
   constructor(private readonly url: string) {}
 
@@ -51,6 +52,14 @@ export class DaemonClient {
     return () => {
       const idx = this.eventHandlers.indexOf(handler);
       if (idx >= 0) this.eventHandlers.splice(idx, 1);
+    };
+  }
+
+  onNotify(handler: (title: string, body: string) => void): () => void {
+    this.notifyHandlers.push(handler);
+    return () => {
+      const idx = this.notifyHandlers.indexOf(handler);
+      if (idx >= 0) this.notifyHandlers.splice(idx, 1);
     };
   }
 
@@ -138,6 +147,12 @@ export class DaemonClient {
       case "event": {
         for (const handler of this.eventHandlers) {
           handler(frame.channel, frame.payload);
+        }
+        break;
+      }
+      case "notify": {
+        for (const handler of this.notifyHandlers) {
+          handler(frame.title, frame.body);
         }
         break;
       }
