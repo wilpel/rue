@@ -95,6 +95,14 @@ describe("TelegramAdapter", () => {
     expect(received2).toHaveLength(1);
   });
 
+  it("sendReaction does not throw without token", async () => {
+    await adapter.sendReaction({ chatId: "123" }, "msg-1", "👍");
+  });
+
+  it("sendMessage throws without token", async () => {
+    await expect(adapter.sendMessage({ chatId: "123" }, "hello")).rejects.toThrow();
+  });
+
   it("unsubscribe removes only that handler", () => {
     const received1: InboundMessage[] = [];
     const received2: InboundMessage[] = [];
