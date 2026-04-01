@@ -71,12 +71,12 @@ export function App({ client }: AppProps) {
     return () => clearInterval(interval);
   }, [client]);
 
-  // Listen for delegate results (async responses from background agents)
+  // Listen for async responses (delegate results, scheduled events, answers)
   useEffect(() => {
-    const unsub = client.onNotify((title, body) => {
-      if (title === "Delegate result" && body) {
+    const unsub = client.onNotify((_title, body) => {
+      if (body) {
         setMessages((prev) => [...prev, {
-          id: `delegate-${Date.now()}`,
+          id: `notify-${Date.now()}`,
           role: "assistant",
           content: body,
           timestamp: Date.now(),
