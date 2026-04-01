@@ -87,35 +87,29 @@ export function MessageList({ messages, height, width, isLoading }: MessageListP
   );
 }
 
-function bgLine(text: string, bg: string): string {
-  return `${bg}${text}\x1b[0m`;
-}
-
 function renderMessage(msg: ChatMessage, _width: number): string[] {
   const lines: string[] = [];
   const time = formatTime(msg.timestamp);
-
-  // Subtle bg tints — just a few RGB points off the terminal default
-  const userBg = "\x1b[48;2;28;28;34m";   // tiny cool shift
-  const rueBg = "\x1b[48;2;32;28;26m";    // tiny warm shift
+  const dim = "\x1b[38;2;58;50;45m";
+  const reset = "\x1b[0m";
 
   switch (msg.role) {
     case "user":
-      lines.push("");
-      lines.push(bgLine(`  \x1b[1;38;2;122;162;212m> you\x1b[0m${userBg} \x1b[38;2;107;101;96m${time}\x1b[0m`, userBg));
+      lines.push(`${dim}  ${"─".repeat(Math.min(_width - 6, 60))}${reset}`);
+      lines.push(`  \x1b[1;38;2;122;162;212m> you${reset} \x1b[38;2;107;101;96m${time}${reset}`);
       for (const line of msg.content.split("\n")) {
-        lines.push(bgLine(`    ${line}`, userBg));
+        lines.push(`    ${line}`);
       }
       break;
 
     case "assistant": {
-      lines.push("");
+      lines.push(`${dim}  ${"─".repeat(Math.min(_width - 6, 60))}${reset}`);
       const thinking = msg.isStreaming && !msg.content;
-      lines.push(bgLine(`  \x1b[1;38;2;232;184;122m> rue\x1b[0m${rueBg} \x1b[38;2;107;101;96m${time}\x1b[0m${rueBg}${thinking ? " \x1b[38;2;232;184;122m⠋\x1b[0m" : ""}`, rueBg));
+      lines.push(`  \x1b[1;38;2;232;184;122m> rue${reset} \x1b[38;2;107;101;96m${time}${reset}${thinking ? " \x1b[38;2;232;184;122m⠋\x1b[0m" : ""}`);
       if (msg.content) {
         const rendered = renderMarkdown(msg.content);
         for (const line of rendered.split("\n")) {
-          lines.push(bgLine(`    ${line}`, rueBg));
+          lines.push(`    ${line}`);
         }
       }
       break;
