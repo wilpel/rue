@@ -1,29 +1,42 @@
 import { Box, Text } from "ink";
-import Spinner from "ink-spinner";
 
 interface StatusBarProps {
   agentCount: number;
   isLoading: boolean;
+  totalCost: number;
+  width: number;
 }
 
-export function StatusBar({ agentCount, isLoading }: StatusBarProps) {
+export function StatusBar({ agentCount, isLoading, totalCost, width }: StatusBarProps) {
   return (
-    <Box paddingX={1} justifyContent="space-between">
+    <Box paddingX={2} justifyContent="space-between" width={width}>
       <Box>
+        <Text dimColor>rue v0.1.0</Text>
+        <Text dimColor> | </Text>
         {isLoading ? (
-          <Box>
-            <Spinner type="dots" />
-            <Text color="yellow"> working</Text>
-          </Box>
+          <Text color="yellow">working</Text>
         ) : (
-          <Text dimColor>ready</Text>
+          <Text color="green">ready</Text>
         )}
       </Box>
-      {agentCount > 0 && (
-        <Box>
-          <Text color="yellow">{agentCount} agent{agentCount !== 1 ? "s" : ""} active</Text>
-        </Box>
-      )}
+
+      <Box>
+        {agentCount > 0 && (
+          <>
+            <Text color="yellow">{agentCount} agent{agentCount !== 1 ? "s" : ""}</Text>
+            <Text dimColor> | </Text>
+          </>
+        )}
+        {totalCost > 0 && (
+          <>
+            <Text dimColor>${totalCost.toFixed(2)}</Text>
+            <Text dimColor> | </Text>
+          </>
+        )}
+        <Text dimColor>/help</Text>
+        <Text dimColor> | </Text>
+        <Text dimColor>ctrl+c quit</Text>
+      </Box>
     </Box>
   );
 }

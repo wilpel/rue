@@ -17,13 +17,18 @@ export function InputBar({ onSubmit, isLoading }: InputBarProps) {
   };
 
   return (
-    <Box borderStyle="single" borderColor={isLoading ? "yellow" : "cyan"} paddingX={1}>
+    <Box
+      borderStyle="round"
+      borderColor={isLoading ? "yellow" : "cyan"}
+      paddingX={1}
+      marginX={1}
+    >
       <Text color={isLoading ? "yellow" : "cyan"} bold>{">"} </Text>
       <TextInput
         value={value}
         onChange={setValue}
         onSubmit={handleSubmit}
-        placeholder="Type a message..."
+        placeholder={isLoading ? "waiting for response..." : "message rue..."}
       />
     </Box>
   );

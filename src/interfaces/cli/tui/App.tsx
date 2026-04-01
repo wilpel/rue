@@ -1,8 +1,9 @@
 import { useState, useEffect, useCallback } from "react";
-import { Box, Text, useApp, useInput } from "ink";
+import { Box, Text, useApp, useInput, useStdout } from "ink";
 import { MessageList } from "./MessageList.js";
 import { InputBar } from "./InputBar.js";
-import { AgentPanel } from "./AgentPanel.js";
+import { StatusBar } from "./StatusBar.js";
+import { RueSpinner } from "./RueSpinner.js";
 import { DaemonClient } from "../client.js";
 
 export interface AgentActivity {
@@ -27,9 +28,14 @@ interface AppProps {
 
 export function App({ client }: AppProps) {
   const { exit } = useApp();
+  const { stdout } = useStdout();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [agents, setAgents] = useState<Map<string, AgentActivity>>(new Map());
+  const [totalCost, setTotalCost] = useState(0);
+
+  const termHeight = stdout?.rows ?? 24;
+  const termWidth = stdout?.columns ?? 80;
 
   useInput((_input, key) => {
     if (key.ctrl && _input === "c") {
@@ -40,7 +46,7 @@ export function App({ client }: AppProps) {
 
   // Load message history on startup
   useEffect(() => {
-    client.history(15).then((result) => {
+    client.history(20).then((result) => {
       const restored: ChatMessage[] = result.messages
         .filter((m) => m.role !== "agent-event")
         .map((m) => ({
@@ -49,9 +55,7 @@ export function App({ client }: AppProps) {
           content: m.content,
           timestamp: m.timestamp,
         }));
-      if (restored.length > 0) {
-        setMessages(restored);
-      }
+      if (restored.length > 0) setMessages(restored);
     }).catch(() => {});
   }, [client]);
 
@@ -63,7 +67,7 @@ export function App({ client }: AppProps) {
       const data = payload as Record<string, unknown>;
 
       switch (channel) {
-        case "agent:spawned": {
+        case "agent:spawned":
           setAgents((prev) => new Map(prev).set(data.id as string, {
             id: data.id as string,
             task: data.task as string,
@@ -72,8 +76,18 @@ export function App({ client }: AppProps) {
             lane: data.lane as string,
           }));
           break;
+        case "agent:completed": {
+          const id = data.id as string;
+          if (typeof data.cost === "number") setTotalCost((prev) => prev + (data.cost as number));
+          setAgents((prev) => {
+            const next = new Map(prev);
+            const existing = next.get(id);
+            if (existing) next.set(id, { ...existing, state: "completed" });
+            setTimeout(() => setAgents((p) => { const n = new Map(p); n.delete(id); return n; }), 3000);
+            return next;
+          });
+          break;
         }
-        case "agent:completed":
         case "agent:failed":
         case "agent:killed": {
           const id = data.id as string;
@@ -81,17 +95,8 @@ export function App({ client }: AppProps) {
           setAgents((prev) => {
             const next = new Map(prev);
             const existing = next.get(id);
-            if (existing) {
-              next.set(id, { ...existing, state });
-              // Remove completed/failed/killed agents after a short delay
-              setTimeout(() => {
-                setAgents((p) => {
-                  const n = new Map(p);
-                  n.delete(id);
-                  return n;
-                });
-              }, 5000);
-            }
+            if (existing) next.set(id, { ...existing, state });
+            setTimeout(() => setAgents((p) => { const n = new Map(p); n.delete(id); return n; }), 5000);
             return next;
           });
           break;
@@ -102,80 +107,113 @@ export function App({ client }: AppProps) {
     return unsub;
   }, [client]);
 
-  const handleSubmit = useCallback(
-    async (text: string) => {
-      if (!text.trim()) return;
+  const handleSubmit = useCallback(async (text: string) => {
+    if (!text.trim()) return;
 
-      // Handle slash commands
-      if (text.startsWith("/")) {
-        await handleSlashCommand(text, setMessages, client, agents);
-        return;
-      }
+    if (text.startsWith("/")) {
+      await handleSlashCommand(text, setMessages, client, agents);
+      return;
+    }
 
-      const userMsg: ChatMessage = {
-        id: `user-${Date.now()}`,
-        role: "user",
-        content: text,
-        timestamp: Date.now(),
-      };
+    const userMsg: ChatMessage = {
+      id: `user-${Date.now()}`,
+      role: "user",
+      content: text,
+      timestamp: Date.now(),
+    };
+    const assistantId = `assistant-${Date.now()}`;
+    const assistantMsg: ChatMessage = {
+      id: assistantId,
+      role: "assistant",
+      content: "",
+      timestamp: Date.now(),
+      isStreaming: true,
+    };
 
-      const assistantId = `assistant-${Date.now()}`;
-      const assistantMsg: ChatMessage = {
-        id: assistantId,
-        role: "assistant",
-        content: "",
-        timestamp: Date.now(),
-        isStreaming: true,
-      };
+    setMessages((prev) => [...prev, userMsg, assistantMsg]);
+    setIsLoading(true);
 
-      setMessages((prev) => [...prev, userMsg, assistantMsg]);
-      setIsLoading(true);
+    try {
+      const result = await client.ask(text, {
+        onStream: (chunk) => {
+          setMessages((prev) =>
+            prev.map((m) => m.id === assistantId ? { ...m, content: m.content + chunk } : m),
+          );
+        },
+      });
 
-      try {
-        const result = await client.ask(text, {
-          onStream: (chunk) => {
-            setMessages((prev) =>
-              prev.map((m) =>
-                m.id === assistantId
-                  ? { ...m, content: m.content + chunk }
-                  : m,
-              ),
-            );
-          },
-        });
-
-        setMessages((prev) =>
-          prev.map((m) =>
-            m.id === assistantId
-              ? { ...m, content: m.content || result.output || "(no response)", isStreaming: false }
-              : m,
-          ),
-        );
-      } catch (err) {
-        setMessages((prev) =>
-          prev.map((m) =>
-            m.id === assistantId
-              ? { ...m, content: `Error: ${err instanceof Error ? err.message : String(err)}`, isStreaming: false }
-              : m,
-          ),
-        );
-      } finally {
-        setIsLoading(false);
-      }
-    },
-    [client, isLoading, agents],
-  );
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === assistantId
+            ? { ...m, content: m.content || result.output || "(no response)", isStreaming: false }
+            : m,
+        ),
+      );
+      if (result.cost) setTotalCost((prev) => prev + result.cost);
+    } catch (err) {
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === assistantId
+            ? { ...m, content: `Error: ${err instanceof Error ? err.message : String(err)}`, isStreaming: false }
+            : m,
+        ),
+      );
+    } finally {
+      setIsLoading(false);
+    }
+  }, [client, isLoading, agents]);
 
   const activeAgents = Array.from(agents.values());
+  // Reserve space: status bar (1) + input (3) + agent panel (active agents count, max 3)
+  const agentLines = Math.min(activeAgents.length, 3);
+  const chromeHeight = 3 + (agentLines > 0 ? agentLines + 1 : 0) + 1;
+  const messageAreaHeight = Math.max(5, termHeight - chromeHeight);
 
   return (
-    <Box flexDirection="column" width="100%" height="100%">
-      <Header />
-      <Box flexDirection="column" flexGrow={1}>
-        <MessageList messages={messages} />
+    <Box flexDirection="column" width={termWidth} height={termHeight}>
+      {/* Message area — takes all available space */}
+      <Box flexDirection="column" height={messageAreaHeight} overflow="hidden">
+        <MessageList messages={messages} height={messageAreaHeight} width={termWidth} isLoading={isLoading} />
       </Box>
-      {activeAgents.length > 0 && <AgentPanel agents={activeAgents} />}
+
+      {/* Agent activity bar — only when agents are running */}
+      {activeAgents.length > 0 && (
+        <Box flexDirection="column" paddingX={1}>
+          {activeAgents.slice(0, 3).map((agent) => (
+            <AgentRow key={agent.id} agent={agent} />
+          ))}
+          {activeAgents.length > 3 && (
+            <Text dimColor>  +{activeAgents.length - 3} more agents</Text>
+          )}
+        </Box>
+      )}
+
+      {/* Input bar */}
       <InputBar onSubmit={handleSubmit} isLoading={isLoading} />
+
+      {/* Status bar — bottom of screen */}
+      <StatusBar
+        agentCount={activeAgents.filter(a => a.state === "spawned" || a.state === "running").length}
+        isLoading={isLoading}
+        totalCost={totalCost}
+        width={termWidth}
+      />
+    </Box>
+  );
+}
+
+function AgentRow({ agent }: { agent: AgentActivity }) {
+  const isActive = agent.state === "spawned" || agent.state === "running";
+  const color = isActive ? "yellow" : agent.state === "completed" ? "green" : "red";
+  const icon = isActive ? "~" : agent.state === "completed" ? "+" : "x";
+  const elapsed = formatElapsed(Date.now() - agent.startedAt);
+
+  return (
+    <Box>
+      <Text color={color}>{isActive ? <RueSpinner /> : icon} </Text>
+      <Text color={color} bold>{agent.lane} </Text>
+      <Text dimColor>{agent.task.length > 50 ? agent.task.slice(0, 47) + "..." : agent.task}</Text>
+      <Text dimColor> {elapsed}</Text>
     </Box>
   );
 }
@@ -183,76 +221,47 @@ export function App({ client }: AppProps) {
 async function handleSlashCommand(
   text: string,
   setMessages: React.Dispatch<React.SetStateAction<ChatMessage[]>>,
-  _client: DaemonClient,
+  client: DaemonClient,
   agents: Map<string, AgentActivity>,
 ) {
   const cmd = text.slice(1).trim().toLowerCase();
+  const sysMsg = (content: string) => ({
+    id: `sys-${Date.now()}`, role: "system" as const, content, timestamp: Date.now(),
+  });
 
   switch (cmd) {
     case "agents": {
-      const agentList = Array.from(agents.values());
-      if (agentList.length === 0) {
-        setMessages((prev) => [...prev, {
-          id: `sys-${Date.now()}`,
-          role: "system",
-          content: "No agents currently running.",
-          timestamp: Date.now(),
-        }]);
+      const list = Array.from(agents.values());
+      if (list.length === 0) {
+        setMessages((prev) => [...prev, sysMsg("No agents running.")]);
       } else {
-        const lines = agentList.map((a) => {
+        const lines = list.map((a) => {
           const elapsed = formatElapsed(Date.now() - a.startedAt);
-          const icon = a.state === "spawned" || a.state === "running" ? ">" : a.state === "completed" ? "+" : "x";
+          const icon = a.state === "spawned" || a.state === "running" ? "~" : a.state === "completed" ? "+" : "x";
           return `  ${icon} ${a.id.slice(0, 20)} | ${a.state} | ${a.lane} | ${elapsed}\n    ${a.task}`;
         });
-        setMessages((prev) => [...prev, {
-          id: `sys-${Date.now()}`,
-          role: "system",
-          content: `Active agents:\n${lines.join("\n")}`,
-          timestamp: Date.now(),
-        }]);
+        setMessages((prev) => [...prev, sysMsg(`Active agents:\n${lines.join("\n")}`)]);
       }
       break;
     }
-    case "clear": {
+    case "clear":
       setMessages([]);
       break;
-    }
-    case "reset": {
+    case "reset":
       try {
-        await _client.reset();
-        setMessages([{
-          id: `sys-${Date.now()}`,
-          role: "system",
-          content: "Session reset. Starting fresh conversation.",
-          timestamp: Date.now(),
-        }]);
+        await client.reset();
+        setMessages([sysMsg("Session reset.")]);
       } catch {
-        setMessages((prev) => [...prev, {
-          id: `sys-${Date.now()}`,
-          role: "system",
-          content: "Failed to reset session.",
-          timestamp: Date.now(),
-        }]);
+        setMessages((prev) => [...prev, sysMsg("Failed to reset session.")]);
       }
       break;
-    }
-    case "help": {
-      setMessages((prev) => [...prev, {
-        id: `sys-${Date.now()}`,
-        role: "system",
-        content: "Commands: /agents — list agents | /clear — clear chat | /reset — new session | /help — this message",
-        timestamp: Date.now(),
-      }]);
+    case "help":
+      setMessages((prev) => [...prev, sysMsg(
+        "/agents — list agents  /clear — clear chat  /reset — new session  /help — this message\nctrl+c — quit",
+      )]);
       break;
-    }
-    default: {
-      setMessages((prev) => [...prev, {
-        id: `sys-${Date.now()}`,
-        role: "system",
-        content: `Unknown command: /${cmd}. Type /help for available commands.`,
-        timestamp: Date.now(),
-      }]);
-    }
+    default:
+      setMessages((prev) => [...prev, sysMsg(`Unknown: /${cmd}. Try /help`)]);
   }
 }
 
@@ -260,16 +269,5 @@ function formatElapsed(ms: number): string {
   const seconds = Math.floor(ms / 1000);
   if (seconds < 60) return `${seconds}s`;
   const minutes = Math.floor(seconds / 60);
-  const remaining = seconds % 60;
-  return `${minutes}m${remaining}s`;
-}
-
-function Header() {
-  return (
-    <Box borderStyle="single" borderColor="cyan" paddingX={1} justifyContent="center">
-      <Text bold color="cyan">rue</Text>
-      <Text color="gray"> v0.1.0 </Text>
-      <Text dimColor>| /help for commands</Text>
-    </Box>
-  );
+  return `${minutes}m${seconds % 60}s`;
 }
