@@ -50,13 +50,6 @@ export function App({ client }: AppProps) {
     return () => clearInterval(timer);
   }, []);
 
-  // 1-second tick to force sidebar re-renders (agent elapsed times, etc)
-  const [, setTick] = useState(0);
-  useEffect(() => {
-    const t = setInterval(() => setTick(n => n + 1), 1000);
-    return () => clearInterval(t);
-  }, []);
-
   const termHeight = stdout?.rows ?? 24;
   const termWidth = stdout?.columns ?? 80;
 

@@ -1,0 +1,1 @@
+{ "name": "skill-creator", "short": "Create new skills from a description. Spawns an expert agent that builds the full skill (SKILL.md, run.ts, metadata.json)." }
