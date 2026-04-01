@@ -18,7 +18,7 @@ describe("DelegatesController", () => {
   it("validates spawn body", () => {
     const mockDelegate = { spawn: vi.fn() } as unknown as DelegateService;
     const controller = new DelegatesController(mockDelegate);
-    const result = controller.spawnDelegate({ task: "", chatId: 0 });
-    expect(result).toEqual({ error: "task and chatId required" });
+    const result = controller.spawnDelegate({ task: "" });
+    expect(result).toEqual({ error: "task is required" });
   });
 });
