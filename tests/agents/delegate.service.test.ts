@@ -3,18 +3,17 @@ import { DelegateService } from "../../src/agents/delegate.service.js";
 import { ClaudeProcessService } from "../../src/agents/claude-process.service.js";
 import { HealthService } from "../../src/agents/health.service.js";
 import { BusService } from "../../src/bus/bus.service.js";
-import type { InboxService } from "../../src/inbox/inbox.service.js";
 
 describe("DelegateService", () => {
   let delegate: DelegateService;
-  let mockInbox: InboxService;
+  let mockChannelPost: ReturnType<typeof vi.fn>;
   let mockHealth: HealthService;
   let bus: BusService;
   let mockProcessService: ClaudeProcessService;
 
   beforeEach(() => {
     bus = new BusService();
-    mockInbox = { push: vi.fn(), onMessage: vi.fn(), formatPrefix: vi.fn() } as unknown as InboxService;
+    mockChannelPost = vi.fn();
     mockHealth = { trackAgent: vi.fn(), untrackAgent: vi.fn(), updateLastOutput: vi.fn(), start: vi.fn(), stop: vi.fn(), onModuleDestroy: vi.fn() } as unknown as HealthService;
 
     const mockProcess = {
@@ -25,15 +24,16 @@ describe("DelegateService", () => {
     };
     mockProcessService = { createProcess: vi.fn().mockReturnValue(mockProcess) } as unknown as ClaudeProcessService;
 
-    delegate = new DelegateService(mockProcessService, bus, mockInbox, mockHealth);
+    delegate = new DelegateService(mockProcessService, bus, mockHealth);
+    delegate.setChannelService({ post: mockChannelPost });
   });
 
-  it("spawns a delegate and pushes result to inbox on completion", async () => {
+  it("spawns a delegate and posts result to channel on completion", async () => {
     await delegate.spawn("Search for apartments", 123, 456);
-    expect(mockInbox.push).toHaveBeenCalledWith(
-      "delegate",
+    expect(mockChannelPost).toHaveBeenCalledWith(
+      expect.stringContaining("delegate"),
       expect.stringContaining("Search results here"),
-      expect.objectContaining({ chatId: 123 }),
+      123,
     );
   });
 
@@ -69,7 +69,7 @@ describe("DelegateService", () => {
     await promise.catch(() => {});
   });
 
-  it("handles failure and pushes error to inbox", async () => {
+  it("handles failure and posts error to channel", async () => {
     const failProcess = {
       run: vi.fn().mockRejectedValue(new Error("SDK crashed")),
       kill: vi.fn(),
@@ -79,10 +79,10 @@ describe("DelegateService", () => {
     (mockProcessService.createProcess as ReturnType<typeof vi.fn>).mockReturnValue(failProcess);
 
     await delegate.spawn("Failing task", 123);
-    expect(mockInbox.push).toHaveBeenCalledWith(
-      "delegate",
-      expect.stringContaining("issue"),
-      expect.objectContaining({ chatId: 123, error: expect.any(String) }),
+    expect(mockChannelPost).toHaveBeenCalledWith(
+      expect.stringContaining("delegate"),
+      expect.stringContaining("SDK crashed"),
+      123,
     );
   });
 

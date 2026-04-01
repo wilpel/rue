@@ -63,4 +63,19 @@ describe("MessageRepository", () => {
     expect(msgs[0].role).toBe("channel");
     expect(msgs[0].metadata?.tag).toBe("USER_TELEGRAM");
   });
+
+  it("recentByChatId filters by chatId at SQL level", () => {
+    repo.append({ role: "channel" as any, content: "msg1", metadata: { chatId: 100, tag: "USER_TELEGRAM" } });
+    repo.append({ role: "channel" as any, content: "msg2", metadata: { chatId: 200, tag: "USER_TELEGRAM" } });
+    repo.append({ role: "channel" as any, content: "msg3", metadata: { chatId: 100, tag: "AGENT_RUE" } });
+
+    const chat100 = repo.recentByChatId(100, 10);
+    expect(chat100).toHaveLength(2);
+    expect(chat100[0].content).toBe("msg1");
+    expect(chat100[1].content).toBe("msg3");
+
+    const chat200 = repo.recentByChatId(200, 10);
+    expect(chat200).toHaveLength(1);
+    expect(chat200[0].content).toBe("msg2");
+  });
 });

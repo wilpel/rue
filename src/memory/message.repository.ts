@@ -35,6 +35,22 @@ export class MessageRepository {
     return rows.reverse().map(this.toStoredMessage);
   }
 
+  recentByChatId(chatId: number, limit = 20): StoredMessage[] {
+    type RawRow = { id: string; role: string; content: string; metadata: string | null; session_id: string | null; created_at: number };
+    const rows = this.db.getDb().all(
+      `SELECT id, role, content, metadata, session_id, created_at FROM messages WHERE json_extract(metadata, '$.chatId') = ? ORDER BY created_at ASC LIMIT ?`,
+      chatId, limit,
+    ) as RawRow[];
+    return rows.map(row => ({
+      id: row.id,
+      role: row.role as MessageRole,
+      content: row.content,
+      createdAt: row.created_at,
+      sessionId: row.session_id ?? undefined,
+      metadata: row.metadata ? JSON.parse(row.metadata) : undefined,
+    }));
+  }
+
   get(id: string): StoredMessage | null {
     const row = this.db.getDrizzle().select().from(messages).where(eq(messages.id, id)).get();
     return row ? this.toStoredMessage(row) : null;
