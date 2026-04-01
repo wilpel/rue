@@ -39,4 +39,31 @@ describe("AssemblerService", () => {
   it("includes personality", () => { expect(assembler.assemble("test")).toContain("Witty and warm."); });
   it("includes discovered skills", () => { expect(assembler.assemble("test")).toContain("test-skill"); });
   it("returns a string", () => { expect(typeof assembler.assemble("test")).toBe("string"); });
+
+  it("includes active delegates in assembled prompt when set", () => {
+    assembler.setDelegateService({
+      listDelegates: () => [
+        { id: "delegate-1", task: "search web for cats", status: "running", startedAt: Date.now() - 5000 },
+      ],
+    });
+    const prompt = assembler.assemble("test");
+    expect(prompt).toContain("Active Delegates");
+    expect(prompt).toContain("search web for cats");
+    expect(prompt).toContain("running");
+  });
+
+  it("omits delegates section when none are running", () => {
+    assembler.setDelegateService({
+      listDelegates: () => [
+        { id: "delegate-1", task: "done task", status: "completed", startedAt: Date.now() - 60000 },
+      ],
+    });
+    const prompt = assembler.assemble("test");
+    expect(prompt).not.toContain("Active Delegates");
+  });
+
+  it("omits delegates section when no delegate service is set", () => {
+    const prompt = assembler.assemble("test");
+    expect(prompt).not.toContain("Active Delegates");
+  });
 });

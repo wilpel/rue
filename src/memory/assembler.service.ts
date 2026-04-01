@@ -15,6 +15,11 @@ export class AssemblerService {
   private skillsCache: string | null = null;
   private cacheTime = 0;
   private readonly CACHE_TTL = 300_000;
+  private delegateService: { listDelegates(): Array<{ id: string; task: string; status: string; startedAt: number }> } | null = null;
+
+  setDelegateService(svc: { listDelegates(): Array<{ id: string; task: string; status: string; startedAt: number }> }): void {
+    this.delegateService = svc;
+  }
 
   constructor(
     private readonly semantic: SemanticRepository,
@@ -50,6 +55,11 @@ export class AssemblerService {
     if (workingText && !workingText.startsWith("No active")) sections.push(`## Current State\n${workingText}`);
     if (this.skillsCache === null) this.skillsCache = this.discoverSkills() ?? "";
     if (this.skillsCache) sections.push(this.skillsCache);
+    const delegates = this.delegateService?.listDelegates().filter(d => d.status === "running") ?? [];
+    if (delegates.length > 0) {
+      const lines = delegates.map(d => `- **${d.id}**: "${d.task}" (${d.status}, started ${Math.round((Date.now() - d.startedAt) / 1000)}s ago)`);
+      sections.push(`## Active Delegates\nThese agents are currently working. Do NOT re-delegate work that is already in progress.\n\n${lines.join("\n")}`);
+    }
     return sections.join("\n\n");
   }
 

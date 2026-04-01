@@ -1,9 +1,10 @@
-import { Injectable, Inject, OnModuleInit } from "@nestjs/common";
+import { Injectable, Inject, OnModuleInit, forwardRef } from "@nestjs/common";
 import { MessageRepository } from "../memory/message.repository.js";
 import { AssemblerService } from "../memory/assembler.service.js";
 import { TelegramService } from "../telegram/telegram.service.js";
 import { DelegateService } from "../agents/delegate.service.js";
 import { ClaudeProcessService } from "../agents/claude-process.service.js";
+import { BusService } from "../bus/bus.service.js";
 import { log } from "../shared/logger.js";
 
 export interface ChannelMessage {
@@ -36,15 +37,19 @@ export class ChannelService implements OnModuleInit {
   constructor(
     @Inject(MessageRepository) private readonly messages: MessageRepository,
     @Inject(AssemblerService) private readonly assembler: AssemblerService,
-    @Inject(TelegramService) private readonly telegram: TelegramService,
+    @Inject(forwardRef(() => TelegramService)) private readonly telegram: TelegramService,
     @Inject(DelegateService) private readonly delegate: DelegateService,
     @Inject(ClaudeProcessService) private readonly processService: ClaudeProcessService,
+    @Inject(BusService) private readonly bus: BusService,
   ) {}
 
   onModuleInit(): void {
-    // Wire circular dependencies
-    this.telegram.setChannelService(this);
-    this.delegate.setChannelService(this);
+    // Listen for delegate results via bus (decoupled from DelegateService)
+    this.bus.on("delegate:result", ({ agentId, output, chatId }) => {
+      this.post(`AGENT_DELEGATE_${agentId}`, output, chatId);
+    });
+
+    this.assembler.setDelegateService(this.delegate);
     log.info("[channel] Service initialized");
   }
 
