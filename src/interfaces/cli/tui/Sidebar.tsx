@@ -55,7 +55,7 @@ function AgentsPanel({ agents, height, width }: { agents: AgentActivity[]; heigh
   const allVisible = [...activeAgents, ...recentDone].slice(0, height - 2);
 
   return (
-    <Box flexDirection="column" height={height} paddingX={1}>
+    <Box flexDirection="column" height={height} paddingX={1} overflow="hidden">
       <Box>
         <Text color="#E8B87A" bold> Agents </Text>
         {activeAgents.length > 0 && <Text color="#D4956B">({activeAgents.length})</Text>}
@@ -98,7 +98,7 @@ function TasksPanel({ tasks, height, width }: { tasks: TaskInfo[]; height: numbe
   const contentWidth = width - 4;
 
   return (
-    <Box flexDirection="column" height={height} paddingX={1}>
+    <Box flexDirection="column" height={height} paddingX={1} overflow="hidden">
       <Box>
         <Text color="#E8B87A" bold> Tasks </Text>
         {tasks.length > 0 && <Text color="#7AA2D4">({tasks.length})</Text>}
@@ -163,7 +163,7 @@ function UsagePanel({ history, totalCost, totalTokens, height, width }: { histor
   const formatTokens = (n: number) => n >= 1000 ? `${(n / 1000).toFixed(1)}k` : `${n}`;
 
   return (
-    <Box flexDirection="column" height={height} paddingX={1}>
+    <Box flexDirection="column" height={height} paddingX={1} overflow="hidden">
       <Box justifyContent="space-between" width={width - 3}>
         <Box>
           <Text color="#E8B87A" bold> Tokens </Text>
@@ -188,11 +188,13 @@ function UsagePanel({ history, totalCost, totalTokens, height, width }: { histor
 }
 
 function EventsPanel({ events, height, width }: { events: EventEntry[]; height: number; width: number }) {
-  const reversed = [...events].reverse().slice(0, height - 2);
+  // Each event takes ~2 lines (header + summary), so show half of available lines
+  const maxEvents = Math.max(1, Math.floor((height - 2) / 2));
+  const reversed = [...events].reverse().slice(0, maxEvents);
   const contentWidth = width - 4;
 
   return (
-    <Box flexDirection="column" height={height} paddingX={1}>
+    <Box flexDirection="column" height={height} paddingX={1} overflow="hidden">
       <Box>
         <Text color="#E8B87A" bold> Events </Text>
       </Box>
@@ -202,7 +204,7 @@ function EventsPanel({ events, height, width }: { events: EventEntry[]; height: 
       {reversed.length === 0 ? (
         <Box paddingLeft={1}><Text color="#4A3F35">no events</Text></Box>
       ) : (
-        <Box flexDirection="column">
+        <Box flexDirection="column" overflow="hidden">
           {reversed.map((evt, i) => (
             <EventRow key={`${evt.timestamp}-${i}`} event={evt} maxWidth={contentWidth} />
           ))}
@@ -224,16 +226,10 @@ function EventRow({ event, maxWidth }: { event: EventEntry; maxWidth: number }) 
     : "#6B6560";
 
   return (
-    <Box paddingLeft={1} flexDirection="column" width={maxWidth}>
-      <Box>
-        <Text color="#4A3F35">{time} </Text>
-        <Text color={channelColor} bold>{tag} </Text>
-      </Box>
-      {event.summary ? (
-        <Box paddingLeft={2} width={maxWidth - 2}>
-          <Text color="#6B6560" wrap="wrap">{event.summary}</Text>
-        </Box>
-      ) : null}
+    <Box paddingLeft={1} width={maxWidth}>
+      <Text color="#4A3F35">{time} </Text>
+      <Text color={channelColor} bold>{tag} </Text>
+      {event.summary ? <Text color="#6B6560" wrap="truncate">{event.summary.slice(0, maxWidth - 18)}</Text> : null}
     </Box>
   );
 }
