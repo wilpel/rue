@@ -139,6 +139,12 @@ export function App({ client }: AppProps) {
           if (typeof data.cost === "number") {
             setTotalCost((prev) => prev + (data.cost as number));
           }
+          const inTok = (data.inputTokens as number) ?? 0;
+          const outTok = (data.outputTokens as number) ?? 0;
+          if (inTok + outTok > 0) {
+            setTokensSinceLastSample((prev) => prev + inTok + outTok);
+            setTotalTokens((prev) => prev + inTok + outTok);
+          }
           setAgents((prev) => {
             const next = new Map(prev);
             const existing = next.get(id);
@@ -199,10 +205,9 @@ export function App({ client }: AppProps) {
           setMessages((prev) =>
             prev.map((m) => m.id === assistantId ? { ...m, content: m.content + chunk } : m),
           );
-          // Estimate ~4 chars per token for live tracking
+          // Live estimate ~4 chars per token (exact count arrives in agent:completed)
           const estimatedTokens = Math.ceil(chunk.length / 4);
           setTokensSinceLastSample((prev) => prev + estimatedTokens);
-          setTotalTokens((prev) => prev + estimatedTokens);
         },
       });
 

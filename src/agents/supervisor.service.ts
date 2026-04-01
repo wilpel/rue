@@ -50,7 +50,7 @@ export class SupervisorService {
       });
       handle.state = "completed";
       handle.cost = result.cost;
-      this.bus.emit("agent:completed", { id, result: result.output, cost: result.cost });
+      this.bus.emit("agent:completed", { id, result: result.output, cost: result.cost, inputTokens: result.usage?.inputTokens, outputTokens: result.usage?.outputTokens });
       return result;
     } catch (error) {
       handle.state = "failed";

@@ -118,7 +118,7 @@ export class DaemonGateway implements OnGatewayConnection, OnGatewayDisconnect, 
             this.messages.append({ role: "assistant", content: cleaned });
           }
 
-          this.bus.emit("agent:completed", { id: agentId, result: cleaned.slice(0, 100), cost: result.cost });
+          this.bus.emit("agent:completed", { id: agentId, result: cleaned.slice(0, 100), cost: result.cost, inputTokens: result.usage?.inputTokens, outputTokens: result.usage?.outputTokens });
 
           // Send as a notify so TUI creates a new message bubble
           if (ws.readyState === ws.OPEN) {
@@ -186,7 +186,7 @@ export class DaemonGateway implements OnGatewayConnection, OnGatewayDisconnect, 
             if (ws.readyState === ws.OPEN) ws.send(serializeDaemonFrame({ type: "notify", severity: "info", title: "Delegate answer", body: cleaned }));
           }
 
-          this.bus.emit("agent:completed", { id: followupId, result: cleaned.slice(0, 100), cost: result.cost });
+          this.bus.emit("agent:completed", { id: followupId, result: cleaned.slice(0, 100), cost: result.cost, inputTokens: result.usage?.inputTokens, outputTokens: result.usage?.outputTokens });
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);
           this.delegate.postAnswer(payload.agentId, `Error: ${msg}`);
@@ -237,7 +237,7 @@ export class DaemonGateway implements OnGatewayConnection, OnGatewayDisconnect, 
             if (ws.readyState === ws.OPEN) ws.send(serializeDaemonFrame({ type: "notify", severity: "info", title: "Scheduled event", body: cleaned }));
           }
 
-          this.bus.emit("agent:completed", { id: agentId, result: cleaned.slice(0, 100), cost: result.cost });
+          this.bus.emit("agent:completed", { id: agentId, result: cleaned.slice(0, 100), cost: result.cost, inputTokens: result.usage?.inputTokens, outputTokens: result.usage?.outputTokens });
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);
           log.error(`[gateway] Schedule handler failed: ${msg}`);
@@ -339,7 +339,7 @@ export class DaemonGateway implements OnGatewayConnection, OnGatewayDisconnect, 
             this.messages.append({ role: "assistant", content: cleanedText });
           }
 
-          this.bus.emit("agent:completed", { id: agentId, result: cleanedText.slice(0, 100), cost: result.cost });
+          this.bus.emit("agent:completed", { id: agentId, result: cleanedText.slice(0, 100), cost: result.cost, inputTokens: result.usage?.inputTokens, outputTokens: result.usage?.outputTokens });
           send({ type: "result", id: frame.id, data: { output: cleanedText, cost: result.cost } });
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err);
