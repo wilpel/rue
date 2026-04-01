@@ -36,6 +36,13 @@ export function App({ client }: AppProps) {
   const [events, setEvents] = useState<EventEntry[]>([]);
   const [tasks, setTasks] = useState<TaskInfo[]>([]);
   const [usageHistory, setUsageHistory] = useState<Array<{ cost: number; timestamp: number }>>([]);
+  const [_tick, setTick] = useState(0);
+
+  // 1-second tick for smooth sidebar updates
+  useEffect(() => {
+    const timer = setInterval(() => setTick(t => t + 1), 1000);
+    return () => clearInterval(timer);
+  }, []);
 
   const termHeight = stdout?.rows ?? 24;
   const termWidth = stdout?.columns ?? 80;
@@ -69,7 +76,7 @@ export function App({ client }: AppProps) {
 
   useEffect(() => {
     fetchTasks();
-    const interval = setInterval(fetchTasks, 3_000);
+    const interval = setInterval(fetchTasks, 1_000);
     return () => clearInterval(interval);
   }, [fetchTasks]);
 

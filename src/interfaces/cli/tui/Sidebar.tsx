@@ -136,34 +136,28 @@ function UsagePanel({ history, totalCost, height, width }: { history: UsagePoint
   const graphWidth = width - 4;
   const graphHeight = height - 3;
 
-  // Take last graphWidth points, pad left with zeros so graph always fills width (scrolls right to left)
+  // Take last graphWidth points, pad left with zeros — newest on right, scrolls left
   const raw = history.slice(-graphWidth);
   const padCount = Math.max(0, graphWidth - raw.length);
   const values = [...Array(padCount).fill(0), ...raw.map(p => p.cost)];
-  const maxCost = Math.max(...values, 0.001);
+  const maxCost = Math.max(...values.filter(v => v > 0), 0.001);
 
   // Normalize to 0..graphHeight
   const normalized = values.map(v => (v / maxCost) * graphHeight);
 
-  // Build rows (top = graphHeight-1, bottom = 0)
+  // Build rows — simple dotted bars, no lines
   const rows: string[] = [];
   for (let row = graphHeight - 1; row >= 0; row--) {
     let line = "";
     for (let col = 0; col < graphWidth; col++) {
       const val = normalized[col];
-      const valNext = col < graphWidth - 1 ? normalized[col + 1] : val;
-
-      if (Math.floor(val) === row || (val > row && val < row + 1)) {
-        // This row has the data point
-        if (col < graphWidth - 1) {
-          if (Math.floor(valNext) > row) line += "╱";
-          else if (Math.floor(valNext) < row) line += "╲";
-          else line += "─";
-        } else {
-          line += "─";
-        }
-      } else if (val > row + 1 && col > padCount - 1) {
-        // Below the line — fill area subtly
+      if (val > row + 0.75) {
+        line += "█";
+      } else if (val > row + 0.5) {
+        line += "▓";
+      } else if (val > row + 0.25) {
+        line += "▒";
+      } else if (val > row) {
         line += "░";
       } else {
         line += " ";
@@ -173,7 +167,7 @@ function UsagePanel({ history, totalCost, height, width }: { history: UsagePoint
   }
 
   const callCount = history.length;
-  const lastCost = history.length > 0 ? history[history.length - 1].cost : 0;
+  const lastCost = callCount > 0 ? history[callCount - 1].cost : 0;
 
   return (
     <Box flexDirection="column" height={height} paddingX={1}>
@@ -182,7 +176,7 @@ function UsagePanel({ history, totalCost, height, width }: { history: UsagePoint
           <Text color="#E8B87A" bold> Usage </Text>
           <Text color="#6B6560">${totalCost.toFixed(2)}</Text>
         </Box>
-        {callCount > 0 && <Text color="#4A3F35">last ${lastCost.toFixed(3)}</Text>}
+        {callCount > 0 && <Text color="#4A3F35">${lastCost.toFixed(3)}</Text>}
       </Box>
       <Box borderStyle="single" borderColor="#3A3530" borderTop borderBottom={false} borderLeft={false} borderRight={false}>
         <Text> </Text>
