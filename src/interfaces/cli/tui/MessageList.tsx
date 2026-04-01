@@ -90,12 +90,12 @@ export function MessageList({ messages, height, width, isLoading }: MessageListP
 function renderMessage(msg: ChatMessage, _width: number): string[] {
   const lines: string[] = [];
   const time = formatTime(msg.timestamp);
-  const dim = "\x1b[38;2;58;50;45m";
   const reset = "\x1b[0m";
+  const divider = `\x1b[38;2;38;34;32m${"─".repeat(_width)}${reset}`;
 
   switch (msg.role) {
     case "user":
-      lines.push(`${dim}  ${"─".repeat(Math.min(_width - 6, 60))}${reset}`);
+      lines.push(divider);
       lines.push(`  \x1b[1;38;2;122;162;212m> you${reset} \x1b[38;2;107;101;96m${time}${reset}`);
       for (const line of msg.content.split("\n")) {
         lines.push(`    ${line}`);
@@ -103,7 +103,7 @@ function renderMessage(msg: ChatMessage, _width: number): string[] {
       break;
 
     case "assistant": {
-      lines.push(`${dim}  ${"─".repeat(Math.min(_width - 6, 60))}${reset}`);
+      lines.push(divider);
       const thinking = msg.isStreaming && !msg.content;
       lines.push(`  \x1b[1;38;2;232;184;122m> rue${reset} \x1b[38;2;107;101;96m${time}${reset}${thinking ? " \x1b[38;2;232;184;122m⠋\x1b[0m" : ""}`);
       if (msg.content) {
