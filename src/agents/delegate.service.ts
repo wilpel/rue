@@ -37,12 +37,13 @@ export class DelegateService {
     task: string,
     chatId: string | number,
     messageId?: string | number,
-    opts?: { maxRetries?: number },
+    opts?: { maxRetries?: number; name?: string },
   ): Promise<void> {
     const agentId = `delegate-${Date.now()}`;
+    const displayName = opts?.name ?? task;
     const info: DelegateInfo = {
       id: agentId,
-      task,
+      task: displayName,
       status: "running",
       startedAt: Date.now(),
       activity: [],
@@ -51,7 +52,7 @@ export class DelegateService {
     };
     this.delegates.set(agentId, info);
 
-    this.bus.emit("agent:spawned", { id: agentId, task, lane: "sub" });
+    this.bus.emit("agent:spawned", { id: agentId, task: displayName, lane: "sub" });
     this.health.trackAgent(agentId, Date.now());
 
     const systemPrompt = `You are a background worker agent for Rue. Complete the given task thoroughly using your tools. Output ONLY the final answer/result. Be concise but complete. Format for Telegram (plain text).`;

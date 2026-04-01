@@ -11,6 +11,7 @@ Use this for ANY task that requires tool use — web searches, file reading, cod
 ```bash
 node --import tsx/esm skills/delegate/run.ts spawn \
   --task "Search the web for ..." \
+  --name "Web researcher" \
   --chat-id 12345 \
   --message-id 67890
 ```
@@ -18,6 +19,7 @@ node --import tsx/esm skills/delegate/run.ts spawn \
 ### Arguments
 
 - `--task` (required) — Full description of what the background agent should do. Be specific.
+- `--name` (optional) — Short display name for this agent (e.g., "Web researcher", "Code analyzer"). Shown in the UI.
 - `--chat-id` (required) — Telegram chat ID to send the result to.
 - `--message-id` (optional) — Message ID to reply to.
 
@@ -41,6 +43,6 @@ Shows all running/completed/failed delegate agents, how long they've been runnin
 
 User asks: "Research X for me"
 1. Main agent responds: "Looking into that."
-2. Main agent runs: `skills/delegate/run.ts spawn --task "Research X thoroughly..." --chat-id 123 --message-id 456`
+2. Main agent runs: `skills/delegate/run.ts spawn --task "Research X thoroughly..." --name "Research agent" --chat-id 123 --message-id 456`
 3. Main agent is free for next messages
 4. Background agent finishes → result sent to Telegram automatically

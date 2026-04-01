@@ -28,6 +28,7 @@ const command = process.argv[2];
 
 if (command === "spawn") {
   const task = getArg("task");
+  const name = getArg("name");
   const chatId = getArg("chat-id");
   const messageId = getArg("message-id");
 
@@ -49,6 +50,7 @@ if (command === "spawn") {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         task,
+        name,
         chatId: parseInt(chatId, 10),
         messageId: messageId ? parseInt(messageId, 10) : undefined,
       }),
@@ -110,6 +112,6 @@ if (command === "spawn") {
   }
 } else {
   console.log("Usage:");
-  console.log("  delegate spawn  --task \"...\" --chat-id 12345 [--message-id 67890]");
+  console.log("  delegate spawn  --task \"...\" --name \"Web researcher\" --chat-id 12345 [--message-id 67890]");
   console.log("  delegate status [--id <agent-id>]");
 }
