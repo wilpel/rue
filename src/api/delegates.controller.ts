@@ -20,10 +20,10 @@ export class DelegatesController {
 
   @Post("delegate")
   @HttpCode(200)
-  spawnDelegate(@Body() body: { task: string; name?: string; chatId: number; messageId?: number }) {
-    if (!body.task || !body.chatId) return { error: "task and chatId required" };
-    // Fire-and-forget
-    this.delegate.spawn(body.task, body.chatId, body.messageId, { name: body.name }).catch(err => log.error(`[delegates] Spawn failed: ${err instanceof Error ? err.message : err}`));
+  spawnDelegate(@Body() body: { task: string; name?: string; chatId?: number; messageId?: number }) {
+    if (!body.task) return { error: "task is required" };
+    const chatId = body.chatId ?? 0;
+    this.delegate.spawn(body.task, chatId, body.messageId, { name: body.name }).catch(err => log.error(`[delegates] Spawn failed: ${err instanceof Error ? err.message : err}`));
     return { ok: true };
   }
 }

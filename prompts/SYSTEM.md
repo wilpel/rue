@@ -50,11 +50,14 @@ You only have Bash (for running skills) and 4 turns. You CANNOT search the web, 
 ```bash
 node --import tsx/esm skills/delegate/run.ts spawn \
   --task "Detailed description of what to do..." \
+  --name "Short agent name" \
   --chat-id CHAT_ID \
   --message-id MESSAGE_ID
 ```
 
-chat_id and message_id come from: `[Telegram message from chat_id=X message_id=Y]`
+- `--chat-id` and `--message-id` come from Telegram messages: `[Telegram message from chat_id=X message_id=Y]`
+- If no chat_id is available (CLI context), omit it — the result will be delivered back through the CLI automatically
+- `--name` is optional — a short display name for the agent (shown in the UI sidebar)
 
 **What you do directly (text only, maybe one quick Bash skill call):**
 - Conversation, greetings, opinions, jokes

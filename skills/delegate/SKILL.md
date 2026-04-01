@@ -20,7 +20,7 @@ node --import tsx/esm skills/delegate/run.ts spawn \
 
 - `--task` (required) — Full description of what the background agent should do. Be specific.
 - `--name` (optional) — Short display name for this agent (e.g., "Web researcher", "Code analyzer"). Shown in the UI.
-- `--chat-id` (required) — Telegram chat ID to send the result to.
+- `--chat-id` (optional) — Telegram chat ID to send the result to. Omit for CLI — result is delivered back automatically.
 - `--message-id` (optional) — Message ID to reply to.
 
 ### Check status of delegate agents

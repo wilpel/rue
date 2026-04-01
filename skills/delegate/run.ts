@@ -36,10 +36,6 @@ if (command === "spawn") {
     console.error("Error: --task is required");
     process.exit(1);
   }
-  if (!chatId) {
-    console.error("Error: --chat-id is required");
-    process.exit(1);
-  }
 
   const config = loadConfig();
   const url = `http://127.0.0.1:${config.port}/api/delegate`;
@@ -51,7 +47,7 @@ if (command === "spawn") {
       body: JSON.stringify({
         task,
         name,
-        chatId: parseInt(chatId, 10),
+        chatId: chatId ? parseInt(chatId, 10) : 0,
         messageId: messageId ? parseInt(messageId, 10) : undefined,
       }),
     });
