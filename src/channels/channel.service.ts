@@ -163,7 +163,7 @@ export class ChannelService implements OnModuleInit {
         if (lastUserMsgId) {
           await this.registry
             .sendReaction(channelId, { chatId }, lastUserMsgId, "\uD83D\uDC4D")
-            .catch(() => {});
+            .catch(err => log.warn(`[channel] Reaction failed: ${err instanceof Error ? err.message : err}`));
           log.info("[channel] No text response -- reacted with thumbs up");
         }
       } else {
@@ -189,7 +189,7 @@ export class ChannelService implements OnModuleInit {
         userMessage = "Something went wrong. Try again.";
       }
 
-      await this.registry.sendMessage(channelId, { chatId }, userMessage).catch(() => {});
+      await this.registry.sendMessage(channelId, { chatId }, userMessage).catch(err => log.warn(`[channel] Error message send failed: ${err instanceof Error ? err.message : err}`));
     }
   }
 

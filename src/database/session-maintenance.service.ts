@@ -73,7 +73,7 @@ export class SessionMaintenanceService implements OnModuleInit, OnModuleDestroy 
 
     if (deletedMessages > 0 || deletedEvents > 0) {
       log.info(`[maintenance] Pruned ${deletedMessages} messages, ${deletedEvents} events`);
-      this.bus.emit("system:maintenance" as any, { deletedMessages, deletedEvents });
+      this.bus.emit("system:maintenance", { deletedMessages, deletedEvents });
     }
 
     return { deletedMessages, deletedEvents };

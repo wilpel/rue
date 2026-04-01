@@ -149,7 +149,7 @@ export function createCLI(): Command {
   });
 
   daemon.command("restart").description("Restart the daemon").action(async () => {
-    const { execSync, spawn: _spawn } = await import("node:child_process");
+    const { execSync } = await import("node:child_process");
     // Stop
     try {
       const pids = execSync("lsof -i :18800 -t 2>/dev/null", { encoding: "utf-8" }).trim();

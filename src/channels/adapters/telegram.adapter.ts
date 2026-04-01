@@ -169,7 +169,7 @@ export class TelegramAdapter implements ChannelAdapter {
       const messageId = String(ctx.message.message_id);
 
       log.info(`[telegram] Message from ${telegramId}: "${text.slice(0, 50)}"`);
-      await ctx.sendChatAction("typing").catch(() => {});
+      await ctx.sendChatAction("typing").catch(() => {}); // typing indicator failure is non-critical
 
       this.emit({
         channelId: this.id,

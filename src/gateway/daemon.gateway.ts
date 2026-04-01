@@ -8,15 +8,15 @@ import { SupervisorService } from "../agents/supervisor.service.js";
 import { ClaudeProcessService } from "../agents/claude-process.service.js";
 import { AssemblerService } from "../memory/assembler.service.js";
 import { MessageRepository } from "../memory/message.repository.js";
+import { SessionService } from "../memory/session.service.js";
 import { ConfigService } from "../config/config.service.js";
 import { log } from "../shared/logger.js";
 
-const sessionMap = new WeakMap<WebSocket, string>();
-let lastSessionId: string | undefined;
-let lastSessionTime = 0;
+const SESSION_KEY_GLOBAL = "gateway-global";
 
 const activeAbortControllers = new WeakMap<WebSocket, Set<AbortController>>();
 const wsUnsubscribers = new WeakMap<WebSocket, Array<() => void>>();
+const wsSessionKeys = new WeakMap<WebSocket, string>();
 
 @Injectable()
 @WebSocketGateway()
@@ -33,6 +33,7 @@ export class DaemonGateway implements OnGatewayConnection, OnGatewayDisconnect, 
     @Inject(ClaudeProcessService) private readonly processService: ClaudeProcessService,
     @Inject(AssemblerService) private readonly assembler: AssemblerService,
     @Inject(MessageRepository) private readonly messages: MessageRepository,
+    @Inject(SessionService) private readonly sessions: SessionService,
     @Inject(ConfigService) config: ConfigService,
   ) {
     this.models = config.models;
@@ -65,16 +66,16 @@ export class DaemonGateway implements OnGatewayConnection, OnGatewayDisconnect, 
       let lastReset = Date.now();
 
       // When a delegate finishes, re-trigger the main agent so it can respond with the result
-      const unsub = this.bus.on("delegate:result" as any, async (payload: { agentId: string; output: string; chatId: string | number }) => {
+      const unsub = this.bus.on("delegate:result", async (payload: { agentId: string; output: string; chatId: string | number }) => {
         if (ws.readyState !== ws.OPEN) return;
 
         // Store the delegate result in message history
-        this.messages.append({ role: "channel" as any, content: payload.output, metadata: { tag: `AGENT_DELEGATE_${payload.agentId}` } });
+        this.messages.append({ role: "channel", content: payload.output, metadata: { tag: `AGENT_DELEGATE_${payload.agentId}` } });
 
         // Re-run the main agent with the delegate result as context
         const recentMessages = this.messages.recent(20);
         const history = recentMessages.map(m => {
-          const tag = (m.metadata as any)?.tag ?? (m.role === "assistant" ? "AGENT_RUE" : "USER");
+          const tag = (m.metadata as Record<string, unknown>)?.tag ?? (m.role === "assistant" ? "AGENT_RUE" : "USER");
           return `[${tag}] ${m.content}`;
         }).join("\n");
 
@@ -183,7 +184,8 @@ export class DaemonGateway implements OnGatewayConnection, OnGatewayDisconnect, 
         this.bus.emit("agent:spawned", { id: agentId, task: "Main agent", lane: "main" });
 
         try {
-          const existingSession = sessionMap.get(ws) ?? (Date.now() - lastSessionTime < 1800_000 ? lastSessionId : undefined);
+          const wsKey = wsSessionKeys.get(ws);
+          const existingSession = (wsKey ? this.sessions.get(wsKey) : undefined) ?? this.sessions.get(SESSION_KEY_GLOBAL);
 
           const proc = this.processService.createProcess({
             id: agentId,
@@ -210,9 +212,10 @@ export class DaemonGateway implements OnGatewayConnection, OnGatewayDisconnect, 
           if (abortCtrl) this.untrackAbort(ws, abortCtrl);
 
           if (result.sessionId) {
-            sessionMap.set(ws, result.sessionId);
-            lastSessionId = result.sessionId;
-            lastSessionTime = Date.now();
+            const key = `gateway-ws-${Date.now()}`;
+            wsSessionKeys.set(ws, key);
+            this.sessions.set(key, result.sessionId);
+            this.sessions.set(SESSION_KEY_GLOBAL, result.sessionId);
           }
 
           const cleanedText = result.output.replace(/\[no_?response\]/gi, "").trim();
@@ -231,11 +234,13 @@ export class DaemonGateway implements OnGatewayConnection, OnGatewayDisconnect, 
         break;
       }
 
-      case "reset":
-        sessionMap.delete(ws);
-        lastSessionId = undefined;
+      case "reset": {
+        const resetKey = wsSessionKeys.get(ws);
+        if (resetKey) this.sessions.clear(resetKey);
+        this.sessions.clear(SESSION_KEY_GLOBAL);
         send({ type: "result", id: frame.id, data: { ok: true } });
         break;
+      }
 
       case "history": {
         const limit = (frame.args.limit as number) ?? 20;

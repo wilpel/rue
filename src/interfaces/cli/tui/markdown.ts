@@ -27,7 +27,7 @@ marked.use(
     width: 100,
     reflowText: true,
     showSectionPrefix: false,
-  } as any),
+  } as any), // marked-terminal types are incomplete
 );
 
 export function renderMarkdown(text: string): string {
