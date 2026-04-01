@@ -132,17 +132,6 @@ function TaskRow({ task, maxWidth }: { task: TaskInfo; maxWidth: number }) {
   );
 }
 
-// Line graph characters for connecting points
-const LINE_CHARS: Record<string, string> = {
-  "empty": " ",
-  "dot": "·",
-  "low": "⠁",
-  "rise": "╱",
-  "fall": "╲",
-  "flat": "─",
-  "peak": "╴",
-};
-
 function UsagePanel({ history, totalCost, height, width }: { history: UsagePoint[]; totalCost: number; height: number; width: number }) {
   const graphWidth = width - 4;
   const graphHeight = height - 3;
