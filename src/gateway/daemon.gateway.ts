@@ -82,7 +82,7 @@ export class DaemonGateway implements OnGatewayConnection, OnGatewayDisconnect, 
         const prompt = `A background delegate agent just completed and posted its result to your conversation.\n\nHere is the recent conversation:\n\n${history}\n\n---\nRespond to the user with the delegate's result. Summarize or format it as appropriate.`;
 
         const agentId = `gateway-followup-${Date.now()}`;
-        this.bus.emit("agent:spawned", { id: agentId, task: "Processing delegate result", lane: "main" });
+        this.bus.emit("agent:spawned", { id: agentId, task: "Main agent", lane: "main" });
 
         try {
           const proc = this.processService.createProcess({

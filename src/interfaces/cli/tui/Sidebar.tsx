@@ -58,7 +58,9 @@ function AgentsPanel({ agents, height, width }: { agents: AgentActivity[]; heigh
 
 function SidebarAgentRow({ agent, maxWidth }: { agent: AgentActivity; maxWidth: number }) {
   const isActive = agent.state === "spawned" || agent.state === "running";
-  const color = isActive ? "#D4956B" : agent.state === "completed" ? "#8BA87A" : "#C47070";
+  const isMain = agent.lane === "main";
+  const activeColor = isMain ? "#8BA87A" : "#D4956B";
+  const color = isActive ? activeColor : agent.state === "completed" ? "#6B6560" : "#C47070";
   const icon = isActive ? "" : agent.state === "completed" ? "+" : "x";
   const elapsed = formatElapsed(Date.now() - agent.startedAt);
   const taskLen = Math.max(10, maxWidth - 12);
@@ -67,7 +69,7 @@ function SidebarAgentRow({ agent, maxWidth }: { agent: AgentActivity; maxWidth: 
   return (
     <Box paddingLeft={1}>
       <Text color={color}>{isActive ? <RueSpinner /> : icon} </Text>
-      <Text color="#6B6560">{task} </Text>
+      <Text color={isMain ? "#8BA87A" : "#6B6560"}>{task} </Text>
       <Text color="#4A3F35">{elapsed}</Text>
     </Box>
   );
