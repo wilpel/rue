@@ -5,7 +5,6 @@ import * as os from "node:os";
 import { SchedulerService, computeNextRun } from "../../src/scheduler/scheduler.service.js";
 import { DatabaseService } from "../../src/database/database.service.js";
 import { jobs } from "../../src/database/schema.js";
-import type { InboxService } from "../../src/inbox/inbox.service.js";
 import type { DelegateService } from "../../src/agents/delegate.service.js";
 
 describe("computeNextRun", () => {
@@ -33,15 +32,13 @@ describe("SchedulerService", () => {
   let tmpDir: string;
   let dbService: DatabaseService;
   let scheduler: SchedulerService;
-  let mockInbox: InboxService;
   let mockDelegate: DelegateService;
 
   beforeEach(() => {
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "rue-sched-test-"));
     dbService = new DatabaseService(tmpDir);
-    mockInbox = { push: vi.fn(), onMessage: vi.fn(), formatPrefix: vi.fn() } as unknown as InboxService;
     mockDelegate = { spawn: vi.fn().mockResolvedValue(undefined), listDelegates: vi.fn(), getDelegate: vi.fn(), shutdown: vi.fn() } as unknown as DelegateService;
-    scheduler = new SchedulerService(dbService, mockInbox, mockDelegate);
+    scheduler = new SchedulerService(dbService, mockDelegate);
   });
 
   afterEach(() => {
@@ -59,7 +56,6 @@ describe("SchedulerService", () => {
 
     const count = scheduler.tick();
     expect(count).toBe(1);
-    expect(mockInbox.push).toHaveBeenCalledWith("scheduler", expect.stringContaining("test-job"), expect.any(Object));
     expect(mockDelegate.spawn).toHaveBeenCalled();
   });
 

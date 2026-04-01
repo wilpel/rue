@@ -8,7 +8,6 @@ import { AppModule } from "../src/app.module.js";
 import { ConfigService } from "../src/config/config.service.js";
 import { BusService } from "../src/bus/bus.service.js";
 import { DatabaseService } from "../src/database/database.service.js";
-import { InboxService } from "../src/inbox/inbox.service.js";
 import { SupervisorService } from "../src/agents/supervisor.service.js";
 import { DelegateService } from "../src/agents/delegate.service.js";
 import { MessageRepository } from "../src/memory/message.repository.js";
@@ -40,7 +39,6 @@ describe("AppModule", () => {
     expect(moduleRef.get(ConfigService)).toBeDefined();
     expect(moduleRef.get(BusService)).toBeDefined();
     expect(moduleRef.get(DatabaseService)).toBeDefined();
-    expect(moduleRef.get(InboxService)).toBeDefined();
     expect(moduleRef.get(SupervisorService)).toBeDefined();
     expect(moduleRef.get(DelegateService)).toBeDefined();
     expect(moduleRef.get(MessageRepository)).toBeDefined();
