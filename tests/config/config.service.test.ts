@@ -40,4 +40,33 @@ describe("ConfigService", () => {
     expect(svc.maxAgents).toBe(8);
     expect(typeof svc.dataDir).toBe("string");
   });
+
+  it("has default models config", () => {
+    const config = new ConfigService(path.join(tmpDir, "nonexistent.json"));
+    expect(config.models.primary).toBe("opus");
+    expect(config.models.fallback).toEqual(["sonnet"]);
+  });
+
+  it("has default sessions config", () => {
+    const config = new ConfigService(path.join(tmpDir, "nonexistent.json"));
+    expect(config.sessions.messageTtlDays).toBe(30);
+    expect(config.sessions.maxMessagesPerChat).toBe(500);
+  });
+
+  it("has default debounce config", () => {
+    const config = new ConfigService(path.join(tmpDir, "nonexistent.json"));
+    expect(config.debounce.textGapMs).toBe(2000);
+    expect(config.debounce.mediaGapMs).toBe(100);
+  });
+
+  it("has empty routes by default", () => {
+    const config = new ConfigService(path.join(tmpDir, "nonexistent.json"));
+    expect(config.routes).toEqual([]);
+  });
+
+  it("has default agent config", () => {
+    const config = new ConfigService(path.join(tmpDir, "nonexistent.json"));
+    expect(config.agents.default.systemPrompt).toBe("prompts/SYSTEM.md");
+    expect(config.agents.default.tools).toEqual(["Bash"]);
+  });
 });
