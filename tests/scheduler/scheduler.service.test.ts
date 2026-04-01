@@ -4,7 +4,6 @@ import * as path from "node:path";
 import * as os from "node:os";
 import { SchedulerService, computeNextRun } from "../../src/scheduler/scheduler.service.js";
 import { DatabaseService } from "../../src/database/database.service.js";
-import { jobs } from "../../src/database/schema.js";
 import type { DelegateService } from "../../src/agents/delegate.service.js";
 
 describe("computeNextRun", () => {
@@ -21,6 +20,11 @@ describe("computeNextRun", () => {
   it("parses 'every 30s'", () => {
     const next = computeNextRun("every 30s", 0);
     expect(next).toBe(30_000);
+  });
+
+  it("parses 'in 1d'", () => {
+    const next = computeNextRun("in 1d", 0);
+    expect(next).toBe(86_400_000);
   });
 
   it("returns null for invalid schedule", () => {
@@ -47,58 +51,79 @@ describe("SchedulerService", () => {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  it("fires due jobs", () => {
+  function insertTask(id: string, title: string, schedule: string, type: string, dueAt: number | null, status = "pending") {
     const now = Date.now();
-    dbService.getDrizzle().insert(jobs).values({
-      id: "j1", name: "test-job", schedule: "every 1m", task: "do something",
-      active: 1, createdAt: now, nextRunAt: now - 1000,
-    }).run();
+    dbService.getDb().prepare(
+      "INSERT INTO tasks (id, title, status, type, priority, schedule, due_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    ).run(id, title, status, type, "normal", schedule, dueAt, now, now);
+  }
+
+  it("fires due scheduled tasks", () => {
+    const now = Date.now();
+    insertTask("t1", "test-job", "every 1m", "scheduled", now - 1000);
 
     const count = scheduler.tick();
     expect(count).toBe(1);
     expect(mockDelegate.spawn).toHaveBeenCalled();
   });
 
-  it("skips inactive jobs", () => {
+  it("fires due reminder tasks", () => {
     const now = Date.now();
-    dbService.getDrizzle().insert(jobs).values({
-      id: "j2", name: "inactive", schedule: "every 1m", task: "skip me",
-      active: 0, createdAt: now, nextRunAt: now - 1000,
-    }).run();
+    insertTask("t2", "remind me", "in 1m", "reminder", now - 1000);
+
+    const count = scheduler.tick();
+    expect(count).toBe(1);
+    expect(mockDelegate.spawn).toHaveBeenCalled();
+  });
+
+  it("skips work tasks", () => {
+    const now = Date.now();
+    insertTask("t3", "work item", "", "work", now - 1000);
 
     expect(scheduler.tick()).toBe(0);
   });
 
-  it("updates next_run for recurring jobs", () => {
+  it("skips completed tasks", () => {
     const now = Date.now();
-    dbService.getDrizzle().insert(jobs).values({
-      id: "j3", name: "recurring", schedule: "every 5m", task: "repeat",
-      active: 1, createdAt: now, nextRunAt: now - 1000,
-    }).run();
+    insertTask("t4", "done task", "every 1m", "scheduled", now - 1000, "completed");
 
-    scheduler.tick();
-    const updated = dbService.getDrizzle().select().from(jobs).all()[0];
-    expect(updated.nextRunAt).toBeGreaterThan(now);
-    expect(updated.active).toBe(1);
+    expect(scheduler.tick()).toBe(0);
   });
 
-  it("deactivates one-shot jobs", () => {
+  it("skips tasks not yet due", () => {
     const now = Date.now();
-    dbService.getDrizzle().insert(jobs).values({
-      id: "j4", name: "oneshot", schedule: "in 1m", task: "once",
-      active: 1, createdAt: now, nextRunAt: now - 1000,
-    }).run();
+    insertTask("t5", "future task", "every 1m", "scheduled", now + 60_000);
 
-    scheduler.tick();
-    const updated = dbService.getDrizzle().select().from(jobs).all()[0];
-    expect(updated.active).toBe(0);
-    expect(updated.nextRunAt).toBeNull();
+    expect(scheduler.tick()).toBe(0);
   });
 
-  it("lists all jobs", () => {
+  it("updates due_at for recurring tasks", () => {
     const now = Date.now();
-    dbService.getDrizzle().insert(jobs).values({ id: "j5", name: "a", schedule: "every 1m", task: "t", active: 1, createdAt: now }).run();
-    dbService.getDrizzle().insert(jobs).values({ id: "j6", name: "b", schedule: "every 1m", task: "t", active: 0, createdAt: now }).run();
-    expect(scheduler.listJobs()).toHaveLength(2);
+    insertTask("t6", "recurring", "every 5m", "scheduled", now - 1000);
+
+    scheduler.tick();
+    const updated = dbService.getDb().prepare("SELECT * FROM tasks WHERE id = ?").get("t6") as { due_at: number; status: string };
+    expect(updated.due_at).toBeGreaterThan(now);
+    expect(updated.status).toBe("pending");
+  });
+
+  it("completes one-shot tasks", () => {
+    const now = Date.now();
+    insertTask("t7", "oneshot", "in 1m", "scheduled", now - 1000);
+
+    scheduler.tick();
+    const updated = dbService.getDb().prepare("SELECT * FROM tasks WHERE id = ?").get("t7") as { status: string; completed_at: number };
+    expect(updated.status).toBe("completed");
+    expect(updated.completed_at).toBeGreaterThan(0);
+  });
+
+  it("lists scheduled and reminder tasks", () => {
+    const now = Date.now();
+    insertTask("t8", "sched", "every 1m", "scheduled", now + 60_000);
+    insertTask("t9", "remind", "in 1h", "reminder", now + 3_600_000);
+    insertTask("t10", "work", "", "work", null);
+
+    const jobs = scheduler.listJobs();
+    expect(jobs).toHaveLength(2);
   });
 });
