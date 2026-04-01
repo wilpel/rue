@@ -3,8 +3,8 @@ import { MessageRepository } from "../memory/message.repository.js";
 import { AssemblerService } from "../memory/assembler.service.js";
 import { TelegramService } from "../telegram/telegram.service.js";
 import { DelegateService } from "../agents/delegate.service.js";
+import { ClaudeProcessService } from "../agents/claude-process.service.js";
 import { log } from "../shared/logger.js";
-import type { SDKSystemMessage, SDKStreamEvent, SDKAssistantMessage, SDKResultMessage } from "../shared/sdk-types.js";
 
 export interface ChannelMessage {
   tag: string;
@@ -38,6 +38,7 @@ export class ChannelService implements OnModuleInit {
     @Inject(AssemblerService) private readonly assembler: AssemblerService,
     @Inject(TelegramService) private readonly telegram: TelegramService,
     @Inject(DelegateService) private readonly delegate: DelegateService,
+    @Inject(ClaudeProcessService) private readonly processService: ClaudeProcessService,
   ) {}
 
   onModuleInit(): void {
@@ -132,22 +133,20 @@ export class ChannelService implements OnModuleInit {
 
       const cleaned = output.replace(/\[no_?response\]/gi, "").trim();
       if (cleaned) {
-        // Write agent response to channel
-        this.messages.append({
-          role: "channel",
-          content: cleaned,
-          metadata: { tag: "AGENT_RUE", chatId },
-        });
-        // Send to Telegram
+        // Agent had text — post it
+        this.messages.append({ role: "channel", content: cleaned, metadata: { tag: "AGENT_RUE", chatId } });
         await this.telegram.sendMessage(chatId, cleaned);
         log.info(`[channel] Agent responded (${cleaned.length} chars)`);
-      } else {
-        // No text response — react to the last user message with 👍
+      } else if (output.match(/\[no_?response\]/i)) {
+        // Agent explicitly chose no_response — thumbs up is appropriate
         const lastUserMsgId = this.getLastUserMessageId(chatId);
         if (lastUserMsgId) {
           await this.telegram.reactToMessage(chatId, lastUserMsgId, "👍").catch(() => {});
           log.info(`[channel] No text response — reacted with 👍`);
         }
+      } else {
+        // Empty output with no [no_response] marker — something unexpected
+        log.warn(`[channel] Agent produced empty output for chat ${chatId}`);
       }
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : String(err);
@@ -158,7 +157,18 @@ export class ChannelService implements OnModuleInit {
         this.lastSessionTime = 0;
       }
 
-      await this.telegram.sendMessage(chatId, "Something went wrong. Try again.").catch(() => {});
+      let userMessage: string;
+      if (errMsg.includes("abort") || errMsg.includes("timeout")) {
+        userMessage = "Timed out — try again or simplify the request.";
+      } else if (errMsg.includes("budget") || errMsg.includes("BUDGET")) {
+        userMessage = "Daily budget limit reached. Try again tomorrow.";
+      } else if (errMsg.includes("session") || errMsg.includes("resume")) {
+        userMessage = "Session expired — starting fresh. Try again.";
+      } else {
+        userMessage = "Something went wrong. Try again.";
+      }
+
+      await this.telegram.sendMessage(chatId, userMessage).catch(() => {});
     }
   }
 
@@ -181,71 +191,19 @@ export class ChannelService implements OnModuleInit {
     systemPrompt: string,
     resumeSessionId?: string,
   ): Promise<{ output: string; sessionId?: string }> {
-    const { query } = await import("@anthropic-ai/claude-agent-sdk");
+    const proc = this.processService.createProcess({
+      id: `channel-${Date.now()}`,
+      task: prompt,
+      lane: "main",
+      workdir: process.cwd(),
+      systemPrompt,
+      timeout: 60_000,
+      maxTurns: 4,
+      allowedTools: ["Bash"],
+      resume: resumeSessionId,
+    });
 
-    const abortController = new AbortController();
-    const timeoutTimer = setTimeout(() => {
-      if (!abortController.signal.aborted) abortController.abort();
-    }, 60_000);
-
-    try {
-      const q = query({
-        prompt,
-        options: {
-          cwd: process.cwd(),
-          systemPrompt,
-          model: "opus",
-          tools: ["Bash"],
-          allowedTools: ["Bash"],
-          permissionMode: "bypassPermissions",
-          allowDangerouslySkipPermissions: true,
-          maxTurns: 4,
-          abortController,
-          includePartialMessages: true,
-          settingSources: [],
-          ...(resumeSessionId ? { resume: resumeSessionId } : {}),
-        },
-      });
-
-      let output = "";
-      let sessionId: string | undefined;
-
-      for await (const message of q) {
-        switch (message.type) {
-          case "system": {
-            const sysMsg = message as SDKSystemMessage;
-            if (sysMsg.subtype === "init" && sysMsg.session_id) sessionId = sysMsg.session_id;
-            break;
-          }
-          case "stream_event": {
-            const streamEvt = message as SDKStreamEvent;
-            const event = streamEvt.event;
-            if (event?.type === "content_block_delta" && event.delta?.type === "text_delta" && event.delta.text) {
-              output += event.delta.text;
-            }
-            break;
-          }
-          case "assistant": {
-            const assistantMsg = message as SDKAssistantMessage;
-            const fullText = assistantMsg.message.content
-              .filter(b => b.type === "text")
-              .map(b => (b as { type: "text"; text: string }).text)
-              .join("");
-            if (!output && fullText) output = fullText;
-            break;
-          }
-          case "result": {
-            const resultMsg = message as SDKResultMessage;
-            if (resultMsg.session_id) sessionId = resultMsg.session_id;
-            if (resultMsg.subtype === "success" && resultMsg.result) output = resultMsg.result;
-            break;
-          }
-        }
-      }
-
-      return { output, sessionId };
-    } finally {
-      clearTimeout(timeoutTimer);
-    }
+    const result = await proc.run();
+    return { output: result.output, sessionId: result.sessionId };
   }
 }
