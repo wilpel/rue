@@ -29,25 +29,26 @@ export function MessageList({ messages, height, width, isLoading }: MessageListP
   }, [messages, width, isLoading]);
 
   // Auto-scroll to bottom on new content
+  const displayHeight = height - 1;
   useEffect(() => {
-    const maxOffset = Math.max(0, renderedLines.length - height);
+    const maxOffset = Math.max(0, renderedLines.length - displayHeight);
     setScrollOffset(maxOffset);
-  }, [renderedLines.length, height]);
+  }, [renderedLines.length, displayHeight]);
 
   // Keyboard scrolling
   useInput((_input, key) => {
-    const maxOffset = Math.max(0, renderedLines.length - height);
+    const maxOffset = Math.max(0, renderedLines.length - displayHeight);
     if (key.upArrow || (key.ctrl && _input === "u")) {
-      setScrollOffset((prev) => Math.max(0, prev - (key.ctrl ? Math.floor(height / 2) : 1)));
+      setScrollOffset((prev) => Math.max(0, prev - (key.ctrl ? Math.floor(displayHeight / 2) : 1)));
     }
     if (key.downArrow || (key.ctrl && _input === "d")) {
-      setScrollOffset((prev) => Math.min(maxOffset, prev + (key.ctrl ? Math.floor(height / 2) : 1)));
+      setScrollOffset((prev) => Math.min(maxOffset, prev + (key.ctrl ? Math.floor(displayHeight / 2) : 1)));
     }
     if (key.pageUp) {
-      setScrollOffset((prev) => Math.max(0, prev - height));
+      setScrollOffset((prev) => Math.max(0, prev - displayHeight));
     }
     if (key.pageDown) {
-      setScrollOffset((prev) => Math.min(maxOffset, prev + height));
+      setScrollOffset((prev) => Math.min(maxOffset, prev + displayHeight));
     }
   });
 
@@ -65,16 +66,16 @@ export function MessageList({ messages, height, width, isLoading }: MessageListP
     );
   }
 
-  // Slice visible lines based on scroll offset
-  const visible = renderedLines.slice(scrollOffset, scrollOffset + height);
-  const atBottom = scrollOffset >= renderedLines.length - height;
-  const canScroll = renderedLines.length > height;
+  const atBottom = scrollOffset >= renderedLines.length - displayHeight;
+  const canScroll = renderedLines.length > displayHeight;
+
+  const visibleForDisplay = renderedLines.slice(scrollOffset, scrollOffset + displayHeight);
 
   return (
     <Box flexDirection="column" height={height} overflow="hidden">
-      <Box flexDirection="column" paddingX={1}>
-        {visible.map((line, i) => (
-          <Text key={scrollOffset + i} wrap="wrap">{line}</Text>
+      <Box flexDirection="column" paddingX={1} height={displayHeight}>
+        {visibleForDisplay.map((line, i) => (
+          <Text key={scrollOffset + i} wrap="truncate">{line}</Text>
         ))}
       </Box>
       {/* Scroll indicator */}
@@ -87,18 +88,43 @@ export function MessageList({ messages, height, width, isLoading }: MessageListP
   );
 }
 
+/** Wrap a line to fit within maxWidth, preserving indent */
+function wrapLine(line: string, maxWidth: number, indent: string): string[] {
+  // Strip ANSI to measure visible length
+  const visible = line.replace(/\x1b\[[0-9;]*m/g, "");
+  if (visible.length <= maxWidth) return [line];
+
+  // Simple word wrap on the visible text
+  const words = visible.split(" ");
+  const wrapped: string[] = [];
+  let current = "";
+  for (const word of words) {
+    if (current.length + word.length + 1 > maxWidth && current.length > 0) {
+      wrapped.push(current);
+      current = indent + word;
+    } else {
+      current = current ? current + " " + word : word;
+    }
+  }
+  if (current) wrapped.push(current);
+  return wrapped.length > 0 ? wrapped : [line];
+}
+
 function renderMessage(msg: ChatMessage, _width: number): string[] {
   const lines: string[] = [];
   const time = formatTime(msg.timestamp);
   const reset = "\x1b[0m";
   const divider = `\x1b[38;2;38;34;32m${"─".repeat(_width)}${reset}`;
+  const contentWidth = _width - 6; // account for indent + padding
 
   switch (msg.role) {
     case "user":
       lines.push(divider);
       lines.push(`  \x1b[1;38;2;122;162;212m> you${reset} \x1b[38;2;107;101;96m${time}${reset}`);
       for (const line of msg.content.split("\n")) {
-        lines.push(`    ${line}`);
+        for (const wrapped of wrapLine(`    ${line}`, contentWidth, "    ")) {
+          lines.push(wrapped);
+        }
       }
       break;
 
@@ -109,7 +135,9 @@ function renderMessage(msg: ChatMessage, _width: number): string[] {
       if (msg.content) {
         const rendered = renderMarkdown(msg.content);
         for (const line of rendered.split("\n")) {
-          lines.push(`    ${line}`);
+          for (const wrapped of wrapLine(`    ${line}`, contentWidth, "    ")) {
+            lines.push(wrapped);
+          }
         }
       }
       break;
@@ -117,7 +145,9 @@ function renderMessage(msg: ChatMessage, _width: number): string[] {
 
     case "system":
       lines.push("");
-      lines.push(`  \x1b[3;38;2;107;101;96m~ ${msg.content}\x1b[0m`);
+      for (const wrapped of wrapLine(`  \x1b[3;38;2;107;101;96m~ ${msg.content}\x1b[0m`, contentWidth, "    ")) {
+        lines.push(wrapped);
+      }
       break;
   }
 

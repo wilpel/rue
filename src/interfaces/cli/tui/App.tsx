@@ -193,8 +193,8 @@ export function App({ client }: AppProps) {
   }, [client, isLoading, agents]);
 
   const activeAgents = Array.from(agents.values());
-  // Layout: top bar (1) + input (3) + status (1) = 5, rest is split between messages and sidebar
-  const chromeHeight = 5;
+  // Layout: top bar (1) + spacer (1) + input (3) + status (1) = 6, rest is messages + sidebar
+  const chromeHeight = 6;
   const contentHeight = Math.max(8, termHeight - chromeHeight);
   // Sidebar takes ~30% of width, min 28 chars, only if terminal is wide enough
   const showSidebar = termWidth >= 90;
