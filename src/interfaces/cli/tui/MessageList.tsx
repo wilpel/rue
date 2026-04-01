@@ -87,31 +87,43 @@ export function MessageList({ messages, height, width, isLoading }: MessageListP
   );
 }
 
+function padLine(text: string, width: number, bg: string): string {
+  // Strip ANSI to measure visible length, then pad with bg-colored spaces
+  const visible = text.replace(/\x1b\[[0-9;]*m/g, "").length;
+  const pad = Math.max(0, width - visible);
+  return `${bg}${text}${" ".repeat(pad)}\x1b[0m`;
+}
+
 function renderMessage(msg: ChatMessage, _width: number): string[] {
   const lines: string[] = [];
   const time = formatTime(msg.timestamp);
+  const w = _width - 2; // leave small margin
+
+  // Subtle background colors (very dark, barely visible difference)
+  const userBg = "\x1b[48;2;30;35;42m";   // slightly blue-tinted dark
+  const rueBg = "\x1b[48;2;35;30;25m";    // slightly warm-tinted dark
 
   switch (msg.role) {
     case "user":
       lines.push("");
-      lines.push("");
-      lines.push(`  \x1b[1;38;2;122;162;212m> you\x1b[0m \x1b[38;2;107;101;96m${time}\x1b[0m`);
+      lines.push(padLine(`  \x1b[1;38;2;122;162;212m> you\x1b[0m${userBg} \x1b[38;2;107;101;96m${time}\x1b[0m${userBg}`, w, userBg));
       for (const line of msg.content.split("\n")) {
-        lines.push(`    ${line}`);
+        lines.push(padLine(`    ${line}`, w, userBg));
       }
+      lines.push(padLine("", w, userBg));
       break;
 
     case "assistant": {
       lines.push("");
-      lines.push("");
       const thinking = msg.isStreaming && !msg.content;
-      lines.push(`  \x1b[1;38;2;232;184;122m> rue\x1b[0m \x1b[38;2;107;101;96m${time}\x1b[0m${thinking ? " \x1b[38;2;232;184;122m⠋\x1b[0m" : ""}`);
+      lines.push(padLine(`  \x1b[1;38;2;232;184;122m> rue\x1b[0m${rueBg} \x1b[38;2;107;101;96m${time}\x1b[0m${rueBg}${thinking ? " \x1b[38;2;232;184;122m⠋\x1b[0m" + rueBg : ""}`, w, rueBg));
       if (msg.content) {
         const rendered = renderMarkdown(msg.content);
         for (const line of rendered.split("\n")) {
-          lines.push(`    ${line}`);
+          lines.push(padLine(`    ${line}`, w, rueBg));
         }
       }
+      lines.push(padLine("", w, rueBg));
       break;
     }
 
