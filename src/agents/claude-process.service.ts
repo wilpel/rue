@@ -17,6 +17,7 @@ export class ClaudeProcess {
   get isRunning(): boolean { return this._isRunning; }
   get output(): string | undefined { return this._output; }
   get sessionId(): string | undefined { return this._sessionId; }
+  get abort(): AbortController | null { return this.abortController; }
 
   onOutput(callback: OutputCallback): void { this.outputCallbacks.push(callback); }
 
@@ -40,6 +41,8 @@ export class ClaudeProcess {
           model: this.config.model ?? "opus",
           abortController: this.abortController,
           includePartialMessages: true,
+          settingSources: [],
+          ...(this.config.resume ? { resume: this.config.resume } : {}),
         },
       });
 

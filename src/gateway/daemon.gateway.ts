@@ -5,11 +5,11 @@ import { parseClientFrame, serializeDaemonFrame } from "./protocol.js";
 import type { DaemonFrame } from "./protocol.js";
 import { BusService } from "../bus/bus.service.js";
 import { SupervisorService } from "../agents/supervisor.service.js";
+import { ClaudeProcessService } from "../agents/claude-process.service.js";
 import { AssemblerService } from "../memory/assembler.service.js";
 import { MessageRepository } from "../memory/message.repository.js";
-// Gateway handles WS streaming directly — doesn't use channel system
+import { ConfigService } from "../config/config.service.js";
 import { log } from "../shared/logger.js";
-import type { SDKSystemMessage, SDKStreamEvent, SDKAssistantMessage, SDKResultMessage } from "../shared/sdk-types.js";
 
 const sessionMap = new WeakMap<WebSocket, string>();
 let lastSessionId: string | undefined;
@@ -25,30 +25,32 @@ export class DaemonGateway implements OnGatewayConnection, OnGatewayDisconnect, 
   server!: WSServer;
 
   private static readonly QUERY_TIMEOUT_MS = 300_000;
+  private readonly models: { primary: string; fallback: string[] };
 
   constructor(
     @Inject(BusService) private readonly bus: BusService,
     @Inject(SupervisorService) private readonly supervisor: SupervisorService,
+    @Inject(ClaudeProcessService) private readonly processService: ClaudeProcessService,
     @Inject(AssemblerService) private readonly assembler: AssemblerService,
     @Inject(MessageRepository) private readonly messages: MessageRepository,
-  ) {}
+    @Inject(ConfigService) config: ConfigService,
+  ) {
+    this.models = config.models;
+  }
 
   handleConnection(_client: WebSocket): void {
     log.info("[gateway] Client connected");
   }
 
   handleDisconnect(client: WebSocket): void {
-    // Abort all active queries for this client
     const controllers = activeAbortControllers.get(client);
     if (controllers) { for (const ac of controllers) ac.abort(); controllers.clear(); }
-    // Remove bus listeners
     const unsubs = wsUnsubscribers.get(client);
     if (unsubs) { for (const unsub of unsubs) unsub(); unsubs.length = 0; }
     log.info("[gateway] Client disconnected");
   }
 
   onModuleDestroy(): void {
-    // Clean up all connections on shutdown
     if (this.server) {
       for (const client of this.server.clients) {
         this.handleDisconnect(client as WebSocket);
@@ -57,12 +59,7 @@ export class DaemonGateway implements OnGatewayConnection, OnGatewayDisconnect, 
     }
   }
 
-  // NestJS WS gateway calls handleConnection/handleDisconnect automatically.
-  // For raw WS, we handle messages via the 'message' event in handleConnection.
-  // Override handleConnection to set up the raw message handler:
   afterInit(): void {
-    // The @WebSocketGateway sets up the WS server.
-    // We need to handle raw messages since we use a custom frame protocol.
     this.server.on("connection", (ws: WebSocket) => {
       let messageCount = 0;
       let lastReset = Date.now();
@@ -114,95 +111,56 @@ export class DaemonGateway implements OnGatewayConnection, OnGatewayDisconnect, 
         log.info(`[gateway] ask: "${text.slice(0, 60)}"`);
         const systemPrompt = this.assembler.assemble(text);
 
-        // WS messages persisted directly
         this.messages.append({ role: "user", content: text });
 
+        // Emit agent event so sidebar sees activity
+        const agentId = `gateway-${Date.now()}`;
+        this.bus.emit("agent:spawned", { id: agentId, task: text.slice(0, 80), lane: "main" });
+
         try {
-          const { query } = await import("@anthropic-ai/claude-agent-sdk");
-          const abortController = new AbortController();
-          this.trackAbort(ws, abortController);
-
-          const timeoutTimer = setTimeout(() => { if (!abortController.signal.aborted) abortController.abort(); }, DaemonGateway.QUERY_TIMEOUT_MS);
-
           const existingSession = sessionMap.get(ws) ?? (Date.now() - lastSessionTime < 1800_000 ? lastSessionId : undefined);
 
-          const q = query({
-            prompt: text,
-            options: {
-              cwd: process.cwd(),
-              systemPrompt,
-              model: "opus",
-              tools: ["Read", "Write", "Edit", "Bash", "Glob", "Grep", "WebSearch", "WebFetch", "Agent"],
-              allowedTools: ["Read", "Write", "Edit", "Bash", "Glob", "Grep", "WebSearch", "WebFetch", "Agent"],
-              permissionMode: "bypassPermissions",
-              allowDangerouslySkipPermissions: true,
-              maxTurns: 3,
-              abortController,
-              includePartialMessages: true,
-              settingSources: [],
-              ...(existingSession ? { resume: existingSession } : {}),
-            },
+          const proc = this.processService.createProcess({
+            id: agentId,
+            task: text,
+            lane: "main",
+            workdir: process.cwd(),
+            systemPrompt,
+            timeout: DaemonGateway.QUERY_TIMEOUT_MS,
+            maxTurns: 3,
+            model: this.models.primary,
+            allowedTools: ["Read", "Write", "Edit", "Bash", "Glob", "Grep", "WebSearch", "WebFetch", "Agent"],
+            resume: existingSession,
           });
 
-          let allText = "";
-          let cost = 0;
-          let streamedInCurrentTurn = 0;
+          const abortCtrl = proc.abort;
+          if (abortCtrl) this.trackAbort(ws, abortCtrl);
 
-          for await (const message of q) {
-            switch (message.type) {
-              case "system": {
-                const sysMsg = message as SDKSystemMessage;
-                if (sysMsg.subtype === "init" && sysMsg.session_id) {
-                  sessionMap.set(ws, sysMsg.session_id);
-                  lastSessionId = sysMsg.session_id;
-                  lastSessionTime = Date.now();
-                }
-                break;
-              }
-              case "stream_event": {
-                const streamEvt = message as SDKStreamEvent;
-                const event = streamEvt.event;
-                if (event?.type === "content_block_delta" && event.delta?.type === "text_delta" && event.delta.text) {
-                  allText += event.delta.text;
-                  streamedInCurrentTurn += event.delta.text.length;
-                  send({ type: "stream", agentId: "main", chunk: event.delta.text });
-                }
-                break;
-              }
-              case "assistant": {
-                const assistantMsg = message as SDKAssistantMessage;
-                const fullText = assistantMsg.message.content.filter(b => b.type === "text").map(b => (b as { type: "text"; text: string }).text).join("");
-                if (fullText && streamedInCurrentTurn === 0) {
-                  allText += fullText;
-                  send({ type: "stream", agentId: "main", chunk: fullText });
-                }
-                streamedInCurrentTurn = 0;
-                break;
-              }
-              case "result": {
-                const resultMsg = message as SDKResultMessage;
-                cost = resultMsg.total_cost_usd;
-                if (resultMsg.session_id) { sessionMap.set(ws, resultMsg.session_id); lastSessionId = resultMsg.session_id; lastSessionTime = Date.now(); }
-                if (resultMsg.subtype === "success" && resultMsg.result && !allText) {
-                  allText = resultMsg.result;
-                  send({ type: "stream", agentId: "main", chunk: resultMsg.result });
-                }
-                break;
-              }
-            }
+          proc.onOutput((chunk) => {
+            send({ type: "stream", agentId: "main", chunk });
+          });
+
+          const result = await proc.run();
+
+          if (abortCtrl) this.untrackAbort(ws, abortCtrl);
+
+          if (result.sessionId) {
+            sessionMap.set(ws, result.sessionId);
+            lastSessionId = result.sessionId;
+            lastSessionTime = Date.now();
           }
 
-          clearTimeout(timeoutTimer);
-          this.untrackAbort(ws, abortController);
-
-          const cleanedText = allText.replace(/\[no_?response\]/gi, "").trim();
+          const cleanedText = result.output.replace(/\[no_?response\]/gi, "").trim();
           if (cleanedText) {
             this.messages.append({ role: "assistant", content: cleanedText });
           }
-          send({ type: "result", id: frame.id, data: { output: cleanedText, cost } });
+
+          this.bus.emit("agent:completed", { id: agentId, result: cleanedText.slice(0, 100), cost: result.cost });
+          send({ type: "result", id: frame.id, data: { output: cleanedText, cost: result.cost } });
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err);
           log.error(`[gateway] SDK error: ${message}`);
+          this.bus.emit("agent:failed", { id: agentId, error: message, retryable: false });
           send({ type: "error", id: frame.id, code: "SDK_ERROR", message });
         }
         break;
@@ -216,8 +174,8 @@ export class DaemonGateway implements OnGatewayConnection, OnGatewayDisconnect, 
 
       case "history": {
         const limit = (frame.args.limit as number) ?? 20;
-        const messages = this.messages.recent(limit);
-        send({ type: "result", id: frame.id, data: { messages } });
+        const msgs = this.messages.recent(limit);
+        send({ type: "result", id: frame.id, data: { messages: msgs } });
         break;
       }
 
