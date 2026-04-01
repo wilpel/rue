@@ -37,6 +37,7 @@ export class ClaudeProcess {
           allowDangerouslySkipPermissions: true,
           maxTurns: this.config.maxTurns,
           maxBudgetUsd: this.config.budget,
+          model: this.config.model ?? "opus",
           abortController: this.abortController,
           includePartialMessages: true,
         },
@@ -99,7 +100,7 @@ export class ClaudeProcess {
 
       this._isRunning = false;
       this._output = streamedText;
-      return { output: streamedText, exitCode: 0, cost, durationMs: Date.now() - startedAt, sessionId, numTurns, usage };
+      return { output: streamedText, exitCode: 0, cost, durationMs: Date.now() - startedAt, sessionId, numTurns, usage, model: this.config.model ?? "opus" };
     } catch (error) {
       this._isRunning = false;
       const errMsg = error instanceof Error ? error.message : String(error);
@@ -122,5 +123,28 @@ export class ClaudeProcess {
 export class ClaudeProcessService {
   createProcess(config: AgentConfig): ClaudeProcess {
     return new ClaudeProcess(config);
+  }
+
+  async runWithFailover(config: AgentConfig, models: string[], bus?: { emit: (channel: string, payload: unknown) => void }): Promise<SpawnResult> {
+    const RETRYABLE = ["rate_limit", "429", "overloaded", "529", "timeout", "abort", "billing", "insufficient"];
+    let lastError: Error | undefined;
+
+    for (let i = 0; i < models.length; i++) {
+      try {
+        const proc = this.createProcess({ ...config, model: models[i] });
+        const result = await proc.run();
+        return { ...result, model: models[i] };
+      } catch (err) {
+        lastError = err instanceof Error ? err : new Error(String(err));
+        const retryable = RETRYABLE.some(p => lastError!.message.toLowerCase().includes(p));
+        if (retryable && i < models.length - 1) {
+          const next = models[i + 1];
+          if (bus) bus.emit("agent:failover", { id: config.id, fromModel: models[i], toModel: next, reason: lastError.message });
+          continue;
+        }
+        throw lastError;
+      }
+    }
+    throw lastError ?? new Error("No models available");
   }
 }

@@ -11,6 +11,7 @@ export interface AgentConfig {
   parentId?: string;
   budget?: number;
   allowedTools?: string[];
+  model?: string;
 }
 
 export interface AgentHandle {
@@ -44,4 +45,5 @@ export interface SpawnResult {
     cacheReadInputTokens: number;
     cacheCreationInputTokens: number;
   };
+  model?: string;
 }
