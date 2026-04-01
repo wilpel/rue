@@ -89,6 +89,11 @@ export class DaemonClient {
     return this.sendCmd(id, "reset", {}) as Promise<{ ok: boolean }>;
   }
 
+  async tasks(): Promise<{ tasks: Array<{ id: string; title: string; type: string; status: string; priority: string; due_at?: number }> }> {
+    const id = frameId();
+    return this.sendCmd(id, "tasks", {}) as Promise<{ tasks: Array<{ id: string; title: string; type: string; status: string; priority: string; due_at?: number }> }>;
+  }
+
   async history(limit = 20): Promise<{ messages: Array<{ id: string; role: string; content: string; timestamp: number; metadata?: Record<string, unknown> }> }> {
     const id = frameId();
     return this.sendCmd(id, "history", { limit }) as Promise<{ messages: Array<{ id: string; role: string; content: string; timestamp: number; metadata?: Record<string, unknown> }> }>;

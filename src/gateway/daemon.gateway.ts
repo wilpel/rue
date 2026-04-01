@@ -11,6 +11,7 @@ import { MessageRepository } from "../memory/message.repository.js";
 import { SessionService } from "../memory/session.service.js";
 import { DelegateService } from "../agents/delegate.service.js";
 import { ConfigService } from "../config/config.service.js";
+import { TaskService } from "../tasks/task.service.js";
 import { log } from "../shared/logger.js";
 
 const SESSION_KEY_GLOBAL = "gateway-global";
@@ -37,6 +38,7 @@ export class DaemonGateway implements OnGatewayConnection, OnGatewayDisconnect, 
     @Inject(SessionService) private readonly sessions: SessionService,
     @Inject(DelegateService) private readonly delegate: DelegateService,
     @Inject(ConfigService) config: ConfigService,
+    @Inject(TaskService) private readonly taskService: TaskService,
   ) {
     this.models = config.models;
   }
@@ -321,6 +323,12 @@ export class DaemonGateway implements OnGatewayConnection, OnGatewayDisconnect, 
       case "agents":
         send({ type: "result", id: frame.id, data: { agents: this.supervisor.listAgents() } });
         break;
+
+      case "tasks": {
+        const active = this.taskService.listActive();
+        send({ type: "result", id: frame.id, data: { tasks: active } });
+        break;
+      }
 
       default:
         send({ type: "error", id: frame.id, code: "UNKNOWN_CMD", message: `Unknown command: ${frame.cmd}` });

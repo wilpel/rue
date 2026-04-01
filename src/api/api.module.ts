@@ -6,11 +6,14 @@ import { SecretsController } from "./secrets.controller.js";
 import { ProjectsController } from "./projects.controller.js";
 import { CostController } from "./cost.controller.js";
 import { MaintenanceController } from "./maintenance.controller.js";
+import { TasksController } from "./tasks.controller.js";
+import { DbController } from "./db.controller.js";
 import { AgentsModule } from "../agents/agents.module.js";
 import { MemoryModule } from "../memory/memory.module.js";
+import { TasksModule } from "../tasks/tasks.module.js";
 
 @Module({
-  imports: [AgentsModule, MemoryModule],
-  controllers: [StatusController, DelegatesController, HistoryController, SecretsController, ProjectsController, CostController, MaintenanceController],
+  imports: [AgentsModule, MemoryModule, TasksModule],
+  controllers: [StatusController, DelegatesController, HistoryController, SecretsController, ProjectsController, CostController, MaintenanceController, TasksController, DbController],
 })
 export class ApiModule {}

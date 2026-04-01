@@ -35,6 +35,21 @@ export const events = sqliteTable("events", {
   createdAt: integer("created_at").notNull(),
 });
 
+export const tasks = sqliteTable("tasks", {
+  id: text("id").primaryKey(),
+  title: text("title").notNull(),
+  description: text("description"),
+  status: text("status").notNull().default("pending"),
+  type: text("type").notNull().default("work"),
+  priority: text("priority").default("normal"),
+  agentId: text("agent_id"),
+  dueAt: integer("due_at"),
+  schedule: text("schedule"),
+  createdAt: integer("created_at").notNull(),
+  updatedAt: integer("updated_at").notNull(),
+  completedAt: integer("completed_at"),
+});
+
 export const telegramUsers = sqliteTable("telegram_users", {
   telegramId: integer("telegram_id").primaryKey(),
   username: text("username"),

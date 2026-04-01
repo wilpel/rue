@@ -3,7 +3,7 @@ import { Box, Text, useApp, useInput, useStdout } from "ink";
 import { MessageList } from "./MessageList.js";
 import { InputBar } from "./InputBar.js";
 import { StatusBar } from "./StatusBar.js";
-import { Sidebar, type EventEntry } from "./Sidebar.js";
+import { Sidebar, type EventEntry, type TaskInfo } from "./Sidebar.js";
 import { DaemonClient } from "../client.js";
 
 export interface AgentActivity {
@@ -34,6 +34,7 @@ export function App({ client }: AppProps) {
   const [agents, setAgents] = useState<Map<string, AgentActivity>>(new Map());
   const [totalCost, setTotalCost] = useState(0);
   const [events, setEvents] = useState<EventEntry[]>([]);
+  const [tasks, setTasks] = useState<TaskInfo[]>([]);
 
   const termHeight = stdout?.rows ?? 24;
   const termWidth = stdout?.columns ?? 80;
@@ -58,6 +59,16 @@ export function App({ client }: AppProps) {
         }));
       if (restored.length > 0) setMessages(restored);
     }).catch(() => {});
+  }, [client]);
+
+  // Poll for active tasks
+  useEffect(() => {
+    const fetchTasks = () => {
+      client.tasks().then(result => setTasks(result.tasks ?? [])).catch(() => {});
+    };
+    fetchTasks();
+    const interval = setInterval(fetchTasks, 10_000);
+    return () => clearInterval(interval);
   }, [client]);
 
   // Listen for delegate results (async responses from background agents)
@@ -227,6 +238,7 @@ export function App({ client }: AppProps) {
         {showSidebar && (
           <Sidebar
             agents={activeAgents}
+            tasks={tasks}
             events={events}
             height={contentHeight}
             width={sidebarWidth}

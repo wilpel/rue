@@ -10,6 +10,7 @@ import { GatewayModule } from "./gateway/gateway.module.js";
 import { ApiModule } from "./api/api.module.js";
 import { SchedulerModule } from "./scheduler/scheduler.module.js";
 import { PlannerModule } from "./planner/planner.module.js";
+import { TasksModule } from "./tasks/tasks.module.js";
 
 @Module({
   imports: [
@@ -24,6 +25,7 @@ import { PlannerModule } from "./planner/planner.module.js";
     ApiModule,
     SchedulerModule,
     PlannerModule,
+    TasksModule,
   ],
 })
 export class AppModule {}

@@ -82,6 +82,23 @@ export class DatabaseService implements OnModuleDestroy {
         created_at INTEGER NOT NULL
       );
 
+      CREATE TABLE IF NOT EXISTS tasks (
+        id TEXT PRIMARY KEY,
+        title TEXT NOT NULL,
+        description TEXT,
+        status TEXT NOT NULL DEFAULT 'pending',
+        type TEXT NOT NULL DEFAULT 'work',
+        priority TEXT DEFAULT 'normal',
+        agent_id TEXT,
+        due_at INTEGER,
+        schedule TEXT,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        completed_at INTEGER
+      );
+      CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
+      CREATE INDEX IF NOT EXISTS idx_tasks_due_at ON tasks(due_at);
+
       CREATE TABLE IF NOT EXISTS telegram_users (
         telegram_id INTEGER PRIMARY KEY,
         username TEXT,

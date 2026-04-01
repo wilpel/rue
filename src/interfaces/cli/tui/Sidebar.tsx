@@ -2,8 +2,18 @@ import { Box, Text } from "ink";
 import { RueSpinner } from "./RueSpinner.js";
 import type { AgentActivity } from "./App.js";
 
+export interface TaskInfo {
+  id: string;
+  title: string;
+  type: string;
+  status: string;
+  priority: string;
+  due_at?: number;
+}
+
 interface SidebarProps {
   agents: AgentActivity[];
+  tasks: TaskInfo[];
   events: EventEntry[];
   height: number;
   width: number;
@@ -15,13 +25,15 @@ export interface EventEntry {
   timestamp: number;
 }
 
-export function Sidebar({ agents, events, height, width }: SidebarProps) {
-  const agentPanelHeight = Math.max(4, Math.floor(height * 0.3));
-  const eventPanelHeight = height - agentPanelHeight;
+export function Sidebar({ agents, tasks, events, height, width }: SidebarProps) {
+  const agentPanelHeight = Math.max(4, Math.floor(height * 0.25));
+  const taskPanelHeight = Math.max(4, Math.floor(height * 0.3));
+  const eventPanelHeight = height - agentPanelHeight - taskPanelHeight;
 
   return (
     <Box flexDirection="column" width={width} height={height} borderStyle="single" borderColor="#3A3530" borderLeft borderTop={false} borderBottom={false} borderRight={false}>
       <AgentsPanel agents={agents} height={agentPanelHeight} width={width} />
+      <TasksPanel tasks={tasks} height={taskPanelHeight} width={width} />
       <EventsPanel events={events} height={eventPanelHeight} width={width} />
     </Box>
   );
@@ -71,6 +83,58 @@ function SidebarAgentRow({ agent, maxWidth }: { agent: AgentActivity; maxWidth: 
       <Text color="#4A3F35">{elapsed}</Text>
     </Box>
   );
+}
+
+function TasksPanel({ tasks, height, width }: { tasks: TaskInfo[]; height: number; width: number }) {
+  const visible = tasks.slice(0, height - 2);
+  const contentWidth = width - 4;
+
+  return (
+    <Box flexDirection="column" height={height} paddingX={1}>
+      <Box>
+        <Text color="#E8B87A" bold> Tasks </Text>
+        {tasks.length > 0 && <Text color="#7AA2D4">({tasks.length})</Text>}
+      </Box>
+      <Box borderStyle="single" borderColor="#3A3530" borderTop borderBottom={false} borderLeft={false} borderRight={false}>
+        <Text> </Text>
+      </Box>
+      {visible.length === 0 ? (
+        <Box paddingLeft={1}>
+          <Text color="#4A3F35">no tasks</Text>
+        </Box>
+      ) : (
+        <Box flexDirection="column">
+          {visible.map((task) => (
+            <TaskRow key={task.id} task={task} maxWidth={contentWidth} />
+          ))}
+        </Box>
+      )}
+    </Box>
+  );
+}
+
+function TaskRow({ task, maxWidth }: { task: TaskInfo; maxWidth: number }) {
+  const typeIcon = task.type === "scheduled" ? "[S]" : task.type === "reminder" ? "[R]" : "[W]";
+  const priorityColor = task.priority === "urgent" ? "#C47070" : task.priority === "high" ? "#D4956B" : task.priority === "normal" ? "#6B6560" : "#4A3F35";
+  const dueStr = task.due_at ? formatRelativeTime(task.due_at) : "";
+
+  return (
+    <Box paddingLeft={1} width={maxWidth}>
+      <Text color="#7AA2D4">{typeIcon} </Text>
+      <Text color={priorityColor} wrap="truncate">{task.title} </Text>
+      {dueStr ? <Text color="#4A3F35">{dueStr}</Text> : null}
+    </Box>
+  );
+}
+
+function formatRelativeTime(ts: number): string {
+  const diff = ts - Date.now();
+  if (diff <= 0) return "due";
+  const minutes = Math.floor(diff / 60_000);
+  if (minutes < 60) return `${minutes}m`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h`;
+  return `${Math.floor(hours / 24)}d`;
 }
 
 function EventsPanel({ events, height, width }: { events: EventEntry[]; height: number; width: number }) {
