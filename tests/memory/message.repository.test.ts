@@ -55,4 +55,12 @@ describe("MessageRepository", () => {
     repo.append({ role: "user", content: "b" });
     expect(repo.count()).toBe(2);
   });
+
+  it("stores messages with channel role", () => {
+    repo.append({ role: "channel", content: "test", metadata: { tag: "USER_TELEGRAM", chatId: 123 } });
+    const msgs = repo.recent(1);
+    expect(msgs).toHaveLength(1);
+    expect(msgs[0].role).toBe("channel");
+    expect(msgs[0].metadata?.tag).toBe("USER_TELEGRAM");
+  });
 });

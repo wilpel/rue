@@ -54,7 +54,7 @@ export class ChannelService implements OnModuleInit {
   post(tag: string, content: string, chatId: number, extra?: Record<string, unknown>): void {
     // Store in DB
     this.messages.append({
-      role: "channel" as any,
+      role: "channel",
       content,
       metadata: { tag, chatId, ...extra },
     });
@@ -139,7 +139,7 @@ export class ChannelService implements OnModuleInit {
       if (cleaned) {
         // Write agent response to channel
         this.messages.append({
-          role: "channel" as any,
+          role: "channel",
           content: cleaned,
           metadata: { tag: "AGENT_RUE", chatId },
         });

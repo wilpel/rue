@@ -4,7 +4,7 @@ import { messages } from "../database/schema.js";
 import { desc, count, eq } from "drizzle-orm";
 import { nanoid } from "nanoid";
 
-export type MessageRole = "user" | "assistant" | "system" | "agent-event" | "push";
+export type MessageRole = "user" | "assistant" | "system" | "agent-event" | "push" | "channel";
 
 export interface StoredMessage {
   id: string;
