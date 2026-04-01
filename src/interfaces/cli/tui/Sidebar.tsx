@@ -11,10 +11,17 @@ export interface TaskInfo {
   due_at?: number;
 }
 
+export interface UsagePoint {
+  cost: number;
+  timestamp: number;
+}
+
 interface SidebarProps {
   agents: AgentActivity[];
   tasks: TaskInfo[];
   events: EventEntry[];
+  usageHistory: UsagePoint[];
+  totalCost: number;
   height: number;
   width: number;
 }
@@ -25,15 +32,17 @@ export interface EventEntry {
   timestamp: number;
 }
 
-export function Sidebar({ agents, tasks, events, height, width }: SidebarProps) {
-  const agentPanelHeight = Math.max(4, Math.floor(height * 0.25));
-  const taskPanelHeight = Math.max(4, Math.floor(height * 0.3));
-  const eventPanelHeight = height - agentPanelHeight - taskPanelHeight;
+export function Sidebar({ agents, tasks, events, usageHistory, totalCost, height, width }: SidebarProps) {
+  const agentPanelHeight = Math.max(3, Math.floor(height * 0.2));
+  const taskPanelHeight = Math.max(3, Math.floor(height * 0.2));
+  const usagePanelHeight = Math.max(5, Math.floor(height * 0.25));
+  const eventPanelHeight = height - agentPanelHeight - taskPanelHeight - usagePanelHeight;
 
   return (
     <Box flexDirection="column" width={width} height={height} borderStyle="single" borderColor="#3A3530" borderLeft borderTop={false} borderBottom={false} borderRight={false}>
       <AgentsPanel agents={agents} height={agentPanelHeight} width={width} />
       <TasksPanel tasks={tasks} height={taskPanelHeight} width={width} />
+      <UsagePanel history={usageHistory} totalCost={totalCost} height={usagePanelHeight} width={width} />
       <EventsPanel events={events} height={eventPanelHeight} width={width} />
     </Box>
   );
@@ -54,9 +63,7 @@ function AgentsPanel({ agents, height, width }: { agents: AgentActivity[]; heigh
         <Text> </Text>
       </Box>
       {allVisible.length === 0 ? (
-        <Box paddingLeft={1}>
-          <Text color="#4A3F35">no agents</Text>
-        </Box>
+        <Box paddingLeft={1}><Text color="#4A3F35">no agents</Text></Box>
       ) : (
         <Box flexDirection="column">
           {allVisible.map((agent) => (
@@ -99,9 +106,7 @@ function TasksPanel({ tasks, height, width }: { tasks: TaskInfo[]; height: numbe
         <Text> </Text>
       </Box>
       {visible.length === 0 ? (
-        <Box paddingLeft={1}>
-          <Text color="#4A3F35">no tasks</Text>
-        </Box>
+        <Box paddingLeft={1}><Text color="#4A3F35">no tasks</Text></Box>
       ) : (
         <Box flexDirection="column">
           {visible.map((task) => (
@@ -127,18 +132,66 @@ function TaskRow({ task, maxWidth }: { task: TaskInfo; maxWidth: number }) {
   );
 }
 
-function formatRelativeTime(ts: number): string {
-  const diff = ts - Date.now();
-  if (diff <= 0) return "due";
-  const minutes = Math.floor(diff / 60_000);
-  if (minutes < 60) return `${minutes}m`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h`;
-  return `${Math.floor(hours / 24)}d`;
+// Braille sparkline characters: ⣀⣤⣶⣿ (bottom to top fill)
+const SPARK_CHARS = [" ", "▁", "▂", "▃", "▄", "▅", "▆", "▇", "█"];
+
+function UsagePanel({ history, totalCost, height, width }: { history: UsagePoint[]; totalCost: number; height: number; width: number }) {
+  const graphWidth = width - 4;
+  const graphHeight = height - 3; // header + separator + cost line
+
+  // Build sparkline from recent cost data
+  const points = history.slice(-graphWidth);
+  const maxCost = points.length > 0 ? Math.max(...points.map(p => p.cost), 0.001) : 0.001;
+
+  // Build graph rows (bottom to top)
+  const rows: string[] = [];
+  for (let row = 0; row < graphHeight; row++) {
+    let line = "";
+    for (let col = 0; col < graphWidth; col++) {
+      if (col < points.length) {
+        const normalized = points[col].cost / maxCost;
+        const rowThreshold = (row + 1) / graphHeight;
+        const rowBottom = row / graphHeight;
+        if (normalized >= rowThreshold) {
+          line += "█";
+        } else if (normalized > rowBottom) {
+          const partial = (normalized - rowBottom) / (1 / graphHeight);
+          const charIdx = Math.min(Math.floor(partial * SPARK_CHARS.length), SPARK_CHARS.length - 1);
+          line += SPARK_CHARS[charIdx];
+        } else {
+          line += " ";
+        }
+      } else {
+        line += " ";
+      }
+    }
+    rows.unshift(line); // top row first
+  }
+
+  return (
+    <Box flexDirection="column" height={height} paddingX={1}>
+      <Box>
+        <Text color="#E8B87A" bold> Usage </Text>
+        <Text color="#6B6560">${totalCost.toFixed(2)}</Text>
+      </Box>
+      <Box borderStyle="single" borderColor="#3A3530" borderTop borderBottom={false} borderLeft={false} borderRight={false}>
+        <Text> </Text>
+      </Box>
+      {points.length === 0 ? (
+        <Box paddingLeft={1}><Text color="#4A3F35">no usage yet</Text></Box>
+      ) : (
+        <Box flexDirection="column">
+          {rows.map((row, i) => (
+            <Text key={i} color="#D4956B">{row}</Text>
+          ))}
+          <Text color="#4A3F35"> {points.length} calls | max ${maxCost.toFixed(3)}</Text>
+        </Box>
+      )}
+    </Box>
+  );
 }
 
 function EventsPanel({ events, height, width }: { events: EventEntry[]; height: number; width: number }) {
-  // Show latest events first (reversed), limited to fit
   const reversed = [...events].reverse().slice(0, height - 2);
   const contentWidth = width - 4;
 
@@ -151,9 +204,7 @@ function EventsPanel({ events, height, width }: { events: EventEntry[]; height: 
         <Text> </Text>
       </Box>
       {reversed.length === 0 ? (
-        <Box paddingLeft={1}>
-          <Text color="#4A3F35">no events</Text>
-        </Box>
+        <Box paddingLeft={1}><Text color="#4A3F35">no events</Text></Box>
       ) : (
         <Box flexDirection="column">
           {reversed.map((evt, i) => (
@@ -189,6 +240,16 @@ function EventRow({ event, maxWidth }: { event: EventEntry; maxWidth: number }) 
       ) : null}
     </Box>
   );
+}
+
+function formatRelativeTime(ts: number): string {
+  const diff = ts - Date.now();
+  if (diff <= 0) return "due";
+  const minutes = Math.floor(diff / 60_000);
+  if (minutes < 60) return `${minutes}m`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h`;
+  return `${Math.floor(hours / 24)}d`;
 }
 
 function formatElapsed(ms: number): string {

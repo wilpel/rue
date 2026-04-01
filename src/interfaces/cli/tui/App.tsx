@@ -35,6 +35,7 @@ export function App({ client }: AppProps) {
   const [totalCost, setTotalCost] = useState(0);
   const [events, setEvents] = useState<EventEntry[]>([]);
   const [tasks, setTasks] = useState<TaskInfo[]>([]);
+  const [usageHistory, setUsageHistory] = useState<Array<{ cost: number; timestamp: number }>>([]);
 
   const termHeight = stdout?.rows ?? 24;
   const termWidth = stdout?.columns ?? 80;
@@ -118,7 +119,11 @@ export function App({ client }: AppProps) {
           break;
         case "agent:completed": {
           const id = data.id as string;
-          if (typeof data.cost === "number") setTotalCost((prev) => prev + (data.cost as number));
+          if (typeof data.cost === "number") {
+            const cost = data.cost as number;
+            setTotalCost((prev) => prev + cost);
+            setUsageHistory((prev) => [...prev.slice(-50), { cost, timestamp: Date.now() }]);
+          }
           setAgents((prev) => {
             const next = new Map(prev);
             const existing = next.get(id);
@@ -240,6 +245,8 @@ export function App({ client }: AppProps) {
             agents={activeAgents}
             tasks={tasks}
             events={events}
+            usageHistory={usageHistory}
+            totalCost={totalCost}
             height={contentHeight}
             width={sidebarWidth}
           />
