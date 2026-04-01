@@ -65,9 +65,12 @@ export class DaemonGateway implements OnGatewayConnection, OnGatewayDisconnect, 
       let messageCount = 0;
       let lastReset = Date.now();
 
-      // When a delegate finishes, re-trigger the main agent so it can respond with the result
+      // When a delegate finishes, re-trigger the main agent so it can respond via CLI
+      // Only handle delegates spawned from gateway (chatId 0 or no chatId = CLI context)
       const unsub = this.bus.on("delegate:result", async (payload: { agentId: string; output: string; chatId: string | number }) => {
         if (ws.readyState !== ws.OPEN) return;
+        // Skip if this delegate was for a Telegram chat (channel.service handles those)
+        if (payload.chatId && payload.chatId !== 0 && payload.chatId !== "0") return;
 
         // Store the delegate result in message history
         this.messages.append({ role: "channel", content: payload.output, metadata: { tag: `AGENT_DELEGATE_${payload.agentId}` } });

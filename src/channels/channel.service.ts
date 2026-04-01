@@ -35,6 +35,8 @@ export class ChannelService implements OnModuleInit {
 
   onModuleInit(): void {
     this.bus.on("delegate:result", ({ agentId, output, chatId }) => {
+      // Skip CLI delegates (chatId 0) — the gateway handles those
+      if (!chatId || chatId === 0 || chatId === "0") return;
       this.post(`AGENT_DELEGATE_${agentId}`, output, String(chatId));
     });
 
