@@ -97,21 +97,25 @@ describe("SchedulerService", () => {
     expect(scheduler.tick()).toBe(0);
   });
 
-  it("updates due_at for recurring tasks", () => {
+  it("updates due_at for recurring tasks", async () => {
     const now = Date.now();
     insertTask("t6", "recurring", "every 5m", "scheduled", now - 1000);
 
     scheduler.tick();
+    // Wait for async delegate to complete
+    await new Promise(r => setTimeout(r, 50));
     const updated = dbService.getDb().prepare("SELECT * FROM tasks WHERE id = ?").get("t6") as { due_at: number; status: string };
     expect(updated.due_at).toBeGreaterThan(now);
     expect(updated.status).toBe("pending");
   });
 
-  it("completes one-shot tasks", () => {
+  it("completes one-shot tasks", async () => {
     const now = Date.now();
     insertTask("t7", "oneshot", "in 1m", "scheduled", now - 1000);
 
     scheduler.tick();
+    // Wait for async delegate to complete
+    await new Promise(r => setTimeout(r, 50));
     const updated = dbService.getDb().prepare("SELECT * FROM tasks WHERE id = ?").get("t7") as { status: string; completed_at: number };
     expect(updated.status).toBe("completed");
     expect(updated.completed_at).toBeGreaterThan(0);
