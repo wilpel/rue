@@ -1,7 +1,7 @@
 export interface BusChannels {
   "agent:spawned": { id: string; task: string; lane: string };
   "agent:progress": { id: string; chunk: string; tool?: string };
-  "agent:completed": { id: string; result: string; cost: number };
+  "agent:completed": { id: string; result: string; cost: number; inputTokens?: number; outputTokens?: number };
   "agent:failed": { id: string; error: string; retryable: boolean };
   "agent:stalled": { id: string; lastOutputMs: number };
   "agent:killed": { id: string; reason: string };

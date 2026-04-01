@@ -35,14 +35,15 @@ export function App({ client }: AppProps) {
   const [totalCost, setTotalCost] = useState(0);
   const [events, setEvents] = useState<EventEntry[]>([]);
   const [tasks, setTasks] = useState<TaskInfo[]>([]);
-  const [usageHistory, setUsageHistory] = useState<Array<{ cost: number; timestamp: number }>>([]);
-  const [costSinceLastSample, setCostSinceLastSample] = useState(0);
+  const [usageHistory, setUsageHistory] = useState<Array<{ tokens: number; timestamp: number }>>([]);
+  const [, setTokensSinceLastSample] = useState(0);
+  const [totalTokens, setTotalTokens] = useState(0);
 
-  // Sample usage every 5 seconds — adds a new bar to the graph
+  // Sample token usage every 5 seconds — adds a new bar to the graph
   useEffect(() => {
     const timer = setInterval(() => {
-      setCostSinceLastSample((current) => {
-        setUsageHistory((prev) => [...prev.slice(-100), { cost: current, timestamp: Date.now() }]);
+      setTokensSinceLastSample((current) => {
+        setUsageHistory((prev) => [...prev.slice(-100), { tokens: current, timestamp: Date.now() }]);
         return 0;
       });
     }, 5000);
@@ -136,9 +137,7 @@ export function App({ client }: AppProps) {
         case "agent:completed": {
           const id = data.id as string;
           if (typeof data.cost === "number") {
-            const cost = data.cost as number;
-            setTotalCost((prev) => prev + cost);
-            setCostSinceLastSample((prev) => prev + cost);
+            setTotalCost((prev) => prev + (data.cost as number));
           }
           setAgents((prev) => {
             const next = new Map(prev);
@@ -200,6 +199,10 @@ export function App({ client }: AppProps) {
           setMessages((prev) =>
             prev.map((m) => m.id === assistantId ? { ...m, content: m.content + chunk } : m),
           );
+          // Estimate ~4 chars per token for live tracking
+          const estimatedTokens = Math.ceil(chunk.length / 4);
+          setTokensSinceLastSample((prev) => prev + estimatedTokens);
+          setTotalTokens((prev) => prev + estimatedTokens);
         },
       });
 
@@ -263,6 +266,7 @@ export function App({ client }: AppProps) {
             events={events}
             usageHistory={usageHistory}
             totalCost={totalCost}
+            totalTokens={totalTokens}
             height={contentHeight}
             width={sidebarWidth}
           />

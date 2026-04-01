@@ -12,7 +12,7 @@ export interface TaskInfo {
 }
 
 export interface UsagePoint {
-  cost: number;
+  tokens: number;
   timestamp: number;
 }
 
@@ -22,6 +22,7 @@ interface SidebarProps {
   events: EventEntry[];
   usageHistory: UsagePoint[];
   totalCost: number;
+  totalTokens: number;
   height: number;
   width: number;
 }
@@ -32,7 +33,7 @@ export interface EventEntry {
   timestamp: number;
 }
 
-export function Sidebar({ agents, tasks, events, usageHistory, totalCost, height, width }: SidebarProps) {
+export function Sidebar({ agents, tasks, events, usageHistory, totalCost, totalTokens, height, width }: SidebarProps) {
   const agentPanelHeight = Math.max(3, Math.floor(height * 0.2));
   const taskPanelHeight = Math.max(3, Math.floor(height * 0.2));
   const usagePanelHeight = Math.max(5, Math.floor(height * 0.25));
@@ -42,7 +43,7 @@ export function Sidebar({ agents, tasks, events, usageHistory, totalCost, height
     <Box flexDirection="column" width={width} height={height} borderStyle="single" borderColor="#3A3530" borderLeft borderTop={false} borderBottom={false} borderRight={false}>
       <AgentsPanel agents={agents} height={agentPanelHeight} width={width} />
       <TasksPanel tasks={tasks} height={taskPanelHeight} width={width} />
-      <UsagePanel history={usageHistory} totalCost={totalCost} height={usagePanelHeight} width={width} />
+      <UsagePanel history={usageHistory} totalCost={totalCost} totalTokens={totalTokens} height={usagePanelHeight} width={width} />
       <EventsPanel events={events} height={eventPanelHeight} width={width} />
     </Box>
   );
@@ -132,56 +133,55 @@ function TaskRow({ task, maxWidth }: { task: TaskInfo; maxWidth: number }) {
   );
 }
 
-function UsagePanel({ history, totalCost, height, width }: { history: UsagePoint[]; totalCost: number; height: number; width: number }) {
+function UsagePanel({ history, totalCost, totalTokens, height, width }: { history: UsagePoint[]; totalCost: number; totalTokens: number; height: number; width: number }) {
   const graphWidth = width - 4;
   const graphHeight = height - 3;
 
   // Take last graphWidth points, pad left with zeros — newest on right, scrolls left
   const raw = history.slice(-graphWidth);
   const padCount = Math.max(0, graphWidth - raw.length);
-  const values = [...Array(padCount).fill(0), ...raw.map(p => p.cost)];
-  const maxCost = Math.max(...values.filter(v => v > 0), 0.001);
+  const values = [...Array(padCount).fill(0), ...raw.map(p => p.tokens)];
 
-  // Normalize to 0..graphHeight
-  const normalized = values.map(v => (v / maxCost) * graphHeight);
+  // Smooth with rolling average of 3
+  const smoothed = values.map((v, i) => {
+    const start = Math.max(0, i - 1);
+    const end = Math.min(values.length, i + 2);
+    const slice = values.slice(start, end);
+    return slice.reduce((a, b) => a + b, 0) / slice.length;
+  });
 
-  // Build rows — simple dotted bars, no lines
+  const maxVal = Math.max(...smoothed.filter(s => s > 0), 1);
+  const normalized = smoothed.map(v => (v / maxVal) * graphHeight);
+
   const rows: string[] = [];
   for (let row = graphHeight - 1; row >= 0; row--) {
     let line = "";
     for (let col = 0; col < graphWidth; col++) {
       const val = normalized[col];
-      if (val > row + 0.75) {
-        line += "█";
-      } else if (val > row + 0.5) {
-        line += "▓";
-      } else if (val > row + 0.25) {
-        line += "▒";
-      } else if (val > row) {
-        line += "░";
-      } else {
-        line += " ";
-      }
+      if (val > row + 0.75) line += "█";
+      else if (val > row + 0.5) line += "▓";
+      else if (val > row + 0.25) line += "▒";
+      else if (val > row) line += "░";
+      else line += " ";
     }
     rows.push(line);
   }
 
-  const callCount = history.length;
-  const lastCost = callCount > 0 ? history[callCount - 1].cost : 0;
+  const formatTokens = (n: number) => n >= 1000 ? `${(n / 1000).toFixed(1)}k` : `${n}`;
 
   return (
     <Box flexDirection="column" height={height} paddingX={1}>
       <Box justifyContent="space-between" width={width - 3}>
         <Box>
-          <Text color="#E8B87A" bold> Usage </Text>
-          <Text color="#6B6560">${totalCost.toFixed(2)}</Text>
+          <Text color="#E8B87A" bold> Tokens </Text>
+          <Text color="#6B6560">{formatTokens(totalTokens)}</Text>
         </Box>
-        {callCount > 0 && <Text color="#4A3F35">${lastCost.toFixed(3)}</Text>}
+        <Text color="#4A3F35">${totalCost.toFixed(2)}</Text>
       </Box>
       <Box borderStyle="single" borderColor="#3A3530" borderTop borderBottom={false} borderLeft={false} borderRight={false}>
         <Text> </Text>
       </Box>
-      {callCount === 0 ? (
+      {totalTokens === 0 ? (
         <Box paddingLeft={1}><Text color="#4A3F35">no usage yet</Text></Box>
       ) : (
         <Box flexDirection="column">
