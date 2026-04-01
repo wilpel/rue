@@ -1,9 +1,9 @@
 import { useState, useEffect, useCallback } from "react";
-import { Box, Text, useApp, useInput, useStdout } from "ink";
+import { Box, useApp, useInput, useStdout } from "ink";
 import { MessageList } from "./MessageList.js";
 import { InputBar } from "./InputBar.js";
 import { StatusBar } from "./StatusBar.js";
-import { RueSpinner } from "./RueSpinner.js";
+import { Sidebar, type EventEntry } from "./Sidebar.js";
 import { DaemonClient } from "../client.js";
 
 export interface AgentActivity {
@@ -33,6 +33,7 @@ export function App({ client }: AppProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [agents, setAgents] = useState<Map<string, AgentActivity>>(new Map());
   const [totalCost, setTotalCost] = useState(0);
+  const [events, setEvents] = useState<EventEntry[]>([]);
 
   const termHeight = stdout?.rows ?? 24;
   const termWidth = stdout?.columns ?? 80;
@@ -61,10 +62,14 @@ export function App({ client }: AppProps) {
 
   // Subscribe to agent events
   useEffect(() => {
-    client.subscribe(["agent:*"]);
+    client.subscribe(["agent:*", "task:*", "system:*", "delegate:*"]);
 
     const unsub = client.onEvent((channel, payload) => {
       const data = payload as Record<string, unknown>;
+
+      // Track all events for sidebar
+      const summary = data.task as string ?? data.result as string ?? data.error as string ?? data.reason as string ?? "";
+      setEvents((prev) => [...prev.slice(-30), { channel, summary: summary.slice(0, 80), timestamp: Date.now() }]);
 
       switch (channel) {
         case "agent:spawned":
@@ -164,29 +169,33 @@ export function App({ client }: AppProps) {
   }, [client, isLoading, agents]);
 
   const activeAgents = Array.from(agents.values());
-  // Reserve space: status bar (1) + input (3) + agent panel (active agents count, max 3)
-  const agentLines = Math.min(activeAgents.length, 3);
-  const chromeHeight = 3 + (agentLines > 0 ? agentLines + 1 : 0) + 1;
-  const messageAreaHeight = Math.max(5, termHeight - chromeHeight);
+  // Layout: 4 lines for input (3) + status (1), rest is split between messages and sidebar
+  const chromeHeight = 4;
+  const contentHeight = Math.max(8, termHeight - chromeHeight);
+  // Sidebar takes ~30% of width, min 28 chars, only if terminal is wide enough
+  const showSidebar = termWidth >= 90;
+  const sidebarWidth = showSidebar ? Math.max(28, Math.floor(termWidth * 0.3)) : 0;
+  const messageWidth = termWidth - sidebarWidth;
 
   return (
     <Box flexDirection="column" width={termWidth} height={termHeight}>
-      {/* Message area — takes all available space */}
-      <Box flexDirection="column" height={messageAreaHeight} overflow="hidden">
-        <MessageList messages={messages} height={messageAreaHeight} width={termWidth} isLoading={isLoading} />
-      </Box>
-
-      {/* Agent activity bar — only when agents are running */}
-      {activeAgents.length > 0 && (
-        <Box flexDirection="column" paddingX={1}>
-          {activeAgents.slice(0, 3).map((agent) => (
-            <AgentRow key={agent.id} agent={agent} />
-          ))}
-          {activeAgents.length > 3 && (
-            <Text dimColor>  +{activeAgents.length - 3} more agents</Text>
-          )}
+      {/* Main content area — split pane */}
+      <Box flexDirection="row" height={contentHeight}>
+        {/* Left: message area */}
+        <Box flexDirection="column" width={messageWidth} height={contentHeight} overflow="hidden">
+          <MessageList messages={messages} height={contentHeight} width={messageWidth} isLoading={isLoading} />
         </Box>
-      )}
+
+        {/* Right: sidebar with agents + events */}
+        {showSidebar && (
+          <Sidebar
+            agents={activeAgents}
+            events={events}
+            height={contentHeight}
+            width={sidebarWidth}
+          />
+        )}
+      </Box>
 
       {/* Input bar */}
       <InputBar onSubmit={handleSubmit} isLoading={isLoading} />
@@ -198,22 +207,6 @@ export function App({ client }: AppProps) {
         totalCost={totalCost}
         width={termWidth}
       />
-    </Box>
-  );
-}
-
-function AgentRow({ agent }: { agent: AgentActivity }) {
-  const isActive = agent.state === "spawned" || agent.state === "running";
-  const color = isActive ? "yellow" : agent.state === "completed" ? "green" : "red";
-  const icon = isActive ? "~" : agent.state === "completed" ? "+" : "x";
-  const elapsed = formatElapsed(Date.now() - agent.startedAt);
-
-  return (
-    <Box>
-      <Text color={color}>{isActive ? <RueSpinner /> : icon} </Text>
-      <Text color={color} bold>{agent.lane} </Text>
-      <Text dimColor>{agent.task.length > 50 ? agent.task.slice(0, 47) + "..." : agent.task}</Text>
-      <Text dimColor> {elapsed}</Text>
     </Box>
   );
 }

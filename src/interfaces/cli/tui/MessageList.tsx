@@ -1,6 +1,7 @@
 import { useMemo } from "react";
-import { Box, Text } from "ink";
+import { Box, Text, Transform } from "ink";
 import { RueSpinner } from "./RueSpinner.js";
+import { renderMarkdown } from "./markdown.js";
 import type { ChatMessage } from "./App.js";
 
 interface MessageListProps {
@@ -11,10 +12,8 @@ interface MessageListProps {
 }
 
 export function MessageList({ messages, height, width, isLoading }: MessageListProps) {
-  // Show last N messages that fit in the viewport
   const visibleMessages = useMemo(() => {
     if (messages.length === 0) return [];
-    // Rough estimate: each message takes ~3-4 lines
     const maxMessages = Math.floor(height / 3);
     return messages.slice(-maxMessages);
   }, [messages, height]);
@@ -24,10 +23,10 @@ export function MessageList({ messages, height, width, isLoading }: MessageListP
       <Box flexDirection="column" alignItems="center" justifyContent="center" height={height} width={width}>
         <RueSpinner mode="block" />
         <Box marginTop={1}>
-          <Text color="cyan" bold>rue</Text>
-          <Text dimColor> v0.1.0</Text>
+          <Text color="#E8B87A" bold>rue</Text>
+          <Text color="#A89080"> v0.1.0</Text>
         </Box>
-        <Text dimColor>Type a message to start, or /help for commands</Text>
+        <Text color="#A89080">Type a message to start, or /help for commands</Text>
       </Box>
     );
   }
@@ -40,7 +39,7 @@ export function MessageList({ messages, height, width, isLoading }: MessageListP
       {isLoading && !messages.some(m => m.isStreaming && m.content) && (
         <Box marginTop={1} paddingLeft={1}>
           <RueSpinner mode="inline" />
-          <Text dimColor> thinking...</Text>
+          <Text color="#A89080"> thinking...</Text>
         </Box>
       )}
     </Box>
@@ -60,8 +59,8 @@ function UserMessage({ message }: { message: ChatMessage }) {
   return (
     <Box flexDirection="column" marginTop={1}>
       <Box>
-        <Text bold color="blue">{'>'} you </Text>
-        <Text dimColor>{formatTime(message.timestamp)}</Text>
+        <Text bold color="#7AA2D4">{">"} you </Text>
+        <Text color="#6B6560">{formatTime(message.timestamp)}</Text>
       </Box>
       <Box paddingLeft={2}>
         <Text>{message.content}</Text>
@@ -73,20 +72,27 @@ function UserMessage({ message }: { message: ChatMessage }) {
 function AssistantMessage({ message, width }: { message: ChatMessage; width: number }) {
   const isThinking = message.isStreaming && !message.content;
 
+  const rendered = useMemo(() => {
+    if (!message.content) return "";
+    return renderMarkdown(message.content);
+  }, [message.content]);
+
   return (
     <Box flexDirection="column" marginTop={1}>
       <Box>
-        <Text bold color="green">{'>'} rue </Text>
-        <Text dimColor>{formatTime(message.timestamp)}</Text>
+        <Text bold color="#E8B87A">{">"} rue </Text>
+        <Text color="#6B6560">{formatTime(message.timestamp)}</Text>
         {isThinking && (
           <Box marginLeft={1}>
             <RueSpinner mode="inline" />
           </Box>
         )}
       </Box>
-      {message.content ? (
+      {rendered ? (
         <Box paddingLeft={2} width={Math.min(width - 6, 120)}>
-          <Text wrap="wrap">{message.content}</Text>
+          <Transform transform={(output) => output}>
+            <Text>{rendered}</Text>
+          </Transform>
         </Box>
       ) : null}
     </Box>
@@ -96,7 +102,7 @@ function AssistantMessage({ message, width }: { message: ChatMessage; width: num
 function SystemMessage({ message }: { message: ChatMessage }) {
   return (
     <Box marginTop={1} paddingLeft={2}>
-      <Text dimColor italic>~ {message.content}</Text>
+      <Text color="#6B6560" italic>~ {message.content}</Text>
     </Box>
   );
 }

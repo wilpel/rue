@@ -19,11 +19,11 @@ export function InputBar({ onSubmit, isLoading }: InputBarProps) {
   return (
     <Box
       borderStyle="round"
-      borderColor={isLoading ? "yellow" : "cyan"}
+      borderColor={isLoading ? "#D4956B" : "#E8B87A"}
       paddingX={1}
       marginX={1}
     >
-      <Text color={isLoading ? "yellow" : "cyan"} bold>{">"} </Text>
+      <Text color={isLoading ? "#D4956B" : "#E8B87A"} bold>{">"} </Text>
       <TextInput
         value={value}
         onChange={setValue}
