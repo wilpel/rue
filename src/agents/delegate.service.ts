@@ -51,7 +51,7 @@ export class DelegateService {
     };
     this.delegates.set(agentId, info);
 
-    this.bus.emit("agent:spawned", { id: agentId, task: labelFromTask(task), lane: "sub" });
+    this.bus.emit("agent:spawned", { id: agentId, task, lane: "sub" });
     this.health.trackAgent(agentId, Date.now());
 
     const systemPrompt = `You are a background worker agent for Rue. Complete the given task thoroughly using your tools. Output ONLY the final answer/result. Be concise but complete. Format for Telegram (plain text).`;
@@ -152,10 +152,3 @@ export class DelegateService {
   }
 }
 
-/** Extract a short human-readable label from a task description */
-function labelFromTask(task: string): string {
-  // Take first line, cap at 60 chars
-  const first = task.split("\n")[0].trim();
-  if (first.length <= 60) return first;
-  return first.slice(0, 57) + "...";
-}
