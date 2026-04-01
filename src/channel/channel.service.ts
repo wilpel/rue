@@ -81,15 +81,10 @@ export class ChannelService implements OnModuleInit {
    * Get last N messages from a chat, formatted as the conversation thread.
    */
   getHistory(chatId: number, limit = 20): string {
-    const recent = this.messages.recent(limit * 2); // overfetch, then filter
-    const chatMessages = recent.filter(m =>
-      m.metadata?.chatId === chatId || (m.metadata as any)?.chatId === chatId
-    ).slice(-limit);
-
+    const chatMessages = this.messages.recentByChatId(chatId, limit);
     if (chatMessages.length === 0) return "(No conversation history)";
-
     return chatMessages.map(m => {
-      const tag = (m.metadata as any)?.tag ?? (m.role === "assistant" ? "AGENT_RUE" : "USER_TELEGRAM");
+      const tag = (m.metadata as Record<string, unknown>)?.tag ?? (m.role === "assistant" ? "AGENT_RUE" : "USER_TELEGRAM");
       return `[${tag}] ${m.content}`;
     }).join("\n");
   }
