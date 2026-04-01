@@ -57,7 +57,6 @@ export function renderMarkdown(text: string): string {
 }
 
 function renderCodeBlock(lang: string, code: string): string {
-  // Syntax highlight if available
   let highlighted: string;
   if (highlightFn && lang) {
     try {
@@ -70,30 +69,12 @@ function renderCodeBlock(lang: string, code: string): string {
   }
 
   const bg = chalk.bgHex("#1E1B18");
-  const border = chalk.hex("#3A3530");
-  const langTag = lang ? chalk.hex("#6B6560")(` ${lang} `) : "";
+  const dim = chalk.hex("#4A3F35");
+  const langLabel = lang ? dim(`  ${lang}`) : "";
 
   const lines = highlighted.split("\n");
-  const maxLen = Math.max(...lines.map(stripAnsi).map(l => l.length), 20);
-  const width = maxLen + 4;
+  const body = lines.map(l => bg(`  ${l}  `));
 
-  // Top border with language tag
-  const topPad = Math.max(0, width - stripAnsi(langTag).length - 2);
-  const top = border("  ╭") + langTag + border("─".repeat(topPad)) + border("╮");
-
-  // Code lines with background
-  const body = lines.map(l => {
-    const visLen = stripAnsi(l).length;
-    const pad = " ".repeat(Math.max(0, maxLen - visLen));
-    return border("  │ ") + bg(l + pad) + border(" │");
-  });
-
-  // Bottom border
-  const bottom = border("  ╰" + "─".repeat(width) + "╯");
-
-  return "\n" + top + "\n" + body.join("\n") + "\n" + bottom;
+  return "\n" + langLabel + "\n" + body.join("\n") + "\n";
 }
 
-function stripAnsi(str: string): string {
-  return str.replace(/\x1b\[[0-9;]*m/g, "");
-}

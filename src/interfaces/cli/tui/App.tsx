@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { Box, useApp, useInput, useStdout } from "ink";
+import { Box, Text, useApp, useInput, useStdout } from "ink";
 import { MessageList } from "./MessageList.js";
 import { InputBar } from "./InputBar.js";
 import { StatusBar } from "./StatusBar.js";
@@ -169,8 +169,8 @@ export function App({ client }: AppProps) {
   }, [client, isLoading, agents]);
 
   const activeAgents = Array.from(agents.values());
-  // Layout: 4 lines for input (3) + status (1), rest is split between messages and sidebar
-  const chromeHeight = 4;
+  // Layout: top bar (1) + input (3) + status (1) = 5, rest is split between messages and sidebar
+  const chromeHeight = 5;
   const contentHeight = Math.max(8, termHeight - chromeHeight);
   // Sidebar takes ~30% of width, min 28 chars, only if terminal is wide enough
   const showSidebar = termWidth >= 90;
@@ -179,6 +179,19 @@ export function App({ client }: AppProps) {
 
   return (
     <Box flexDirection="column" width={termWidth} height={termHeight}>
+      {/* Top bar */}
+      <Box paddingX={2} justifyContent="space-between" width={termWidth}>
+        <Box>
+          <Text color="#E8B87A" bold> .-.  </Text>
+          <Text color="#E8B87A" bold>rue</Text>
+          <Text color="#4A3F35"> | </Text>
+          <Text color="#6B6560">your ai daemon</Text>
+        </Box>
+        <Box>
+          <Text color="#6B6560">v0.1.0</Text>
+        </Box>
+      </Box>
+
       {/* Main content area — split pane */}
       <Box flexDirection="row" height={contentHeight}>
         {/* Left: message area */}
