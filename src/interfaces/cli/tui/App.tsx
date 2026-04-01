@@ -75,14 +75,16 @@ export function App({ client }: AppProps) {
     }).catch(() => {});
   }, [client]);
 
-  // Poll for active tasks + refresh on task events
+  // Poll for active tasks + refresh on task events (skip while streaming)
   const fetchTasks = useCallback(() => {
-    client.tasks().then(result => setTasks(result.tasks ?? [])).catch(() => {});
-  }, [client]);
+    if (!isLoading) {
+      client.tasks().then(result => setTasks(result.tasks ?? [])).catch(() => {});
+    }
+  }, [client, isLoading]);
 
   useEffect(() => {
     fetchTasks();
-    const interval = setInterval(fetchTasks, 1_000);
+    const interval = setInterval(fetchTasks, 3_000);
     return () => clearInterval(interval);
   }, [fetchTasks]);
 

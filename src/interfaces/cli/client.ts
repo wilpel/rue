@@ -13,6 +13,7 @@ export type EventHandler = (channel: string, payload: unknown) => void;
 export class DaemonClient {
   private ws: WebSocket | null = null;
   private pending = new Map<string, PendingRequest>();
+  private activeStreamId: string | null = null; // Only one ask at a time streams
   private eventHandlers: EventHandler[] = [];
   private notifyHandlers: Array<(title: string, body: string) => void> = [];
 
@@ -22,56 +23,34 @@ export class DaemonClient {
     return this.ws !== null && this.ws.readyState === WebSocket.OPEN;
   }
 
-  async connect(): Promise<void> {
+  connect(): Promise<void> {
     return new Promise((resolve, reject) => {
       this.ws = new WebSocket(this.url);
       this.ws.on("open", () => resolve());
       this.ws.on("error", (err) => reject(err));
-      this.ws.on("close", () => {
-        // Reject all pending requests on disconnect
-        for (const [, req] of this.pending) {
-          req.reject(new Error("WebSocket disconnected"));
-        }
-        this.pending.clear();
-        this.ws = null;
-      });
-      this.ws.on("message", (data) => {
-        const frame = JSON.parse(data.toString()) as DaemonFrame;
-        this.handleFrame(frame);
+      this.ws.on("close", () => { this.ws = null; });
+      this.ws.on("message", (data: Buffer) => {
+        try {
+          const frame = JSON.parse(data.toString()) as DaemonFrame;
+          this.handleFrame(frame);
+        } catch { /* ignore parse errors */ }
       });
     });
   }
 
   disconnect(): void {
-    this.ws?.close();
-    this.ws = null;
+    if (this.ws) { this.ws.close(); this.ws = null; }
   }
 
-  onEvent(handler: EventHandler): () => void {
-    this.eventHandlers.push(handler);
-    return () => {
-      const idx = this.eventHandlers.indexOf(handler);
-      if (idx >= 0) this.eventHandlers.splice(idx, 1);
-    };
-  }
-
-  onNotify(handler: (title: string, body: string) => void): () => void {
-    this.notifyHandlers.push(handler);
-    return () => {
-      const idx = this.notifyHandlers.indexOf(handler);
-      if (idx >= 0) this.notifyHandlers.splice(idx, 1);
-    };
-  }
-
-  async ask(
-    text: string,
-    opts?: { onStream?: (chunk: string) => void },
-  ): Promise<{ output: string; cost: number }> {
+  async ask(text: string, opts?: { onStream?: (chunk: string) => void }): Promise<{ output: string; cost: number }> {
     const id = frameId();
-    return this.sendCmd(id, "ask", { text }, opts?.onStream) as Promise<{
-      output: string;
-      cost: number;
-    }>;
+    this.activeStreamId = id;
+    try {
+      const result = await this.sendCmd(id, "ask", { text }, opts?.onStream) as { output: string; cost: number };
+      return result;
+    } finally {
+      this.activeStreamId = null;
+    }
   }
 
   async status(): Promise<{ agents: unknown[] }> {
@@ -111,6 +90,22 @@ export class DaemonClient {
     this.send({ type: "subscribe", channels });
   }
 
+  onEvent(handler: EventHandler): () => void {
+    this.eventHandlers.push(handler);
+    return () => {
+      const idx = this.eventHandlers.indexOf(handler);
+      if (idx >= 0) this.eventHandlers.splice(idx, 1);
+    };
+  }
+
+  onNotify(handler: (title: string, body: string) => void): () => void {
+    this.notifyHandlers.push(handler);
+    return () => {
+      const idx = this.notifyHandlers.indexOf(handler);
+      if (idx >= 0) this.notifyHandlers.splice(idx, 1);
+    };
+  }
+
   private sendCmd(
     id: string,
     cmd: string,
@@ -144,8 +139,10 @@ export class DaemonClient {
         break;
       }
       case "stream": {
-        for (const req of this.pending.values()) {
-          req.onStream?.(frame.chunk);
+        // Only deliver streams to the active ask request, not to polls
+        if (this.activeStreamId) {
+          const req = this.pending.get(this.activeStreamId);
+          req?.onStream?.(frame.chunk);
         }
         break;
       }
