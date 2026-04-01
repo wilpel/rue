@@ -142,16 +142,9 @@ function UsagePanel({ history, totalCost, totalTokens, height, width }: { histor
   const padCount = Math.max(0, graphWidth - raw.length);
   const values = [...Array(padCount).fill(0), ...raw.map(p => p.tokens)];
 
-  // Smooth with rolling average of 3
-  const smoothed = values.map((v, i) => {
-    const start = Math.max(0, i - 1);
-    const end = Math.min(values.length, i + 2);
-    const slice = values.slice(start, end);
-    return slice.reduce((a, b) => a + b, 0) / slice.length;
-  });
-
-  const maxVal = Math.max(...smoothed.filter(s => s > 0), 1);
-  const normalized = smoothed.map(v => (v / maxVal) * graphHeight);
+  // Use all-time max so bars never rescale — only grows
+  const allTimeMax = Math.max(...history.map(p => p.tokens), 1);
+  const normalized = values.map(v => (v / allTimeMax) * graphHeight);
 
   const rows: string[] = [];
   for (let row = graphHeight - 1; row >= 0; row--) {
