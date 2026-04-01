@@ -132,59 +132,79 @@ function TaskRow({ task, maxWidth }: { task: TaskInfo; maxWidth: number }) {
   );
 }
 
-// Braille sparkline characters: ⣀⣤⣶⣿ (bottom to top fill)
-const SPARK_CHARS = [" ", "▁", "▂", "▃", "▄", "▅", "▆", "▇", "█"];
+// Line graph characters for connecting points
+const LINE_CHARS: Record<string, string> = {
+  "empty": " ",
+  "dot": "·",
+  "low": "⠁",
+  "rise": "╱",
+  "fall": "╲",
+  "flat": "─",
+  "peak": "╴",
+};
 
 function UsagePanel({ history, totalCost, height, width }: { history: UsagePoint[]; totalCost: number; height: number; width: number }) {
   const graphWidth = width - 4;
-  const graphHeight = height - 3; // header + separator + cost line
+  const graphHeight = height - 3;
 
-  // Build sparkline from recent cost data
-  const points = history.slice(-graphWidth);
-  const maxCost = points.length > 0 ? Math.max(...points.map(p => p.cost), 0.001) : 0.001;
+  // Take last graphWidth points, pad left with zeros so graph always fills width (scrolls right to left)
+  const raw = history.slice(-graphWidth);
+  const padCount = Math.max(0, graphWidth - raw.length);
+  const values = [...Array(padCount).fill(0), ...raw.map(p => p.cost)];
+  const maxCost = Math.max(...values, 0.001);
 
-  // Build graph rows (bottom to top)
+  // Normalize to 0..graphHeight
+  const normalized = values.map(v => (v / maxCost) * graphHeight);
+
+  // Build rows (top = graphHeight-1, bottom = 0)
   const rows: string[] = [];
-  for (let row = 0; row < graphHeight; row++) {
+  for (let row = graphHeight - 1; row >= 0; row--) {
     let line = "";
     for (let col = 0; col < graphWidth; col++) {
-      if (col < points.length) {
-        const normalized = points[col].cost / maxCost;
-        const rowThreshold = (row + 1) / graphHeight;
-        const rowBottom = row / graphHeight;
-        if (normalized >= rowThreshold) {
-          line += "█";
-        } else if (normalized > rowBottom) {
-          const partial = (normalized - rowBottom) / (1 / graphHeight);
-          const charIdx = Math.min(Math.floor(partial * SPARK_CHARS.length), SPARK_CHARS.length - 1);
-          line += SPARK_CHARS[charIdx];
+      const val = normalized[col];
+      const valNext = col < graphWidth - 1 ? normalized[col + 1] : val;
+
+      if (Math.floor(val) === row || (val > row && val < row + 1)) {
+        // This row has the data point
+        if (col < graphWidth - 1) {
+          if (Math.floor(valNext) > row) line += "╱";
+          else if (Math.floor(valNext) < row) line += "╲";
+          else line += "─";
         } else {
-          line += " ";
+          line += "─";
         }
+      } else if (val > row + 1 && col > padCount - 1) {
+        // Below the line — fill area subtly
+        line += "░";
       } else {
         line += " ";
       }
     }
-    rows.unshift(line); // top row first
+    rows.push(line);
   }
+
+  const callCount = history.length;
+  const lastCost = history.length > 0 ? history[history.length - 1].cost : 0;
 
   return (
     <Box flexDirection="column" height={height} paddingX={1}>
-      <Box>
-        <Text color="#E8B87A" bold> Usage </Text>
-        <Text color="#6B6560">${totalCost.toFixed(2)}</Text>
+      <Box justifyContent="space-between" width={width - 3}>
+        <Box>
+          <Text color="#E8B87A" bold> Usage </Text>
+          <Text color="#6B6560">${totalCost.toFixed(2)}</Text>
+        </Box>
+        {callCount > 0 && <Text color="#4A3F35">last ${lastCost.toFixed(3)}</Text>}
       </Box>
       <Box borderStyle="single" borderColor="#3A3530" borderTop borderBottom={false} borderLeft={false} borderRight={false}>
         <Text> </Text>
       </Box>
-      {points.length === 0 ? (
+      {callCount === 0 ? (
         <Box paddingLeft={1}><Text color="#4A3F35">no usage yet</Text></Box>
       ) : (
         <Box flexDirection="column">
           {rows.map((row, i) => (
             <Text key={i} color="#D4956B">{row}</Text>
           ))}
-          <Text color="#4A3F35"> {points.length} calls | max ${maxCost.toFixed(3)}</Text>
         </Box>
       )}
     </Box>
