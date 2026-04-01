@@ -1,6 +1,8 @@
 import { Global, Module } from "@nestjs/common";
 import { DatabaseService } from "./database.service.js";
+import { SessionMaintenanceService } from "./session-maintenance.service.js";
 import { ConfigService } from "../config/config.service.js";
+import { BusService } from "../bus/bus.service.js";
 
 @Global()
 @Module({
@@ -10,7 +12,13 @@ import { ConfigService } from "../config/config.service.js";
       useFactory: (config: ConfigService) => new DatabaseService(config.dataDir),
       inject: [ConfigService],
     },
+    {
+      provide: SessionMaintenanceService,
+      useFactory: (db: DatabaseService, bus: BusService, config: ConfigService) =>
+        new SessionMaintenanceService(db, bus, config.sessions),
+      inject: [DatabaseService, BusService, ConfigService],
+    },
   ],
-  exports: [DatabaseService],
+  exports: [DatabaseService, SessionMaintenanceService],
 })
 export class DatabaseModule {}
