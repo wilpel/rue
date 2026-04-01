@@ -94,6 +94,7 @@ function renderMessage(msg: ChatMessage, _width: number): string[] {
   switch (msg.role) {
     case "user":
       lines.push("");
+      lines.push("");
       lines.push(`  \x1b[1;38;2;122;162;212m> you\x1b[0m \x1b[38;2;107;101;96m${time}\x1b[0m`);
       for (const line of msg.content.split("\n")) {
         lines.push(`    ${line}`);
@@ -101,6 +102,7 @@ function renderMessage(msg: ChatMessage, _width: number): string[] {
       break;
 
     case "assistant": {
+      lines.push("");
       lines.push("");
       const thinking = msg.isStreaming && !msg.content;
       lines.push(`  \x1b[1;38;2;232;184;122m> rue\x1b[0m \x1b[38;2;107;101;96m${time}\x1b[0m${thinking ? " \x1b[38;2;232;184;122m⠋\x1b[0m" : ""}`);

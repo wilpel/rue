@@ -39,12 +39,11 @@ export function renderMarkdown(text: string): string {
       return `\n%%CODE_${codeBlocks.length - 1}%%\n`;
     });
 
-    // Render markdown (without code blocks)
     let rendered = marked.parse(withPlaceholders) as string;
 
-    // Replace placeholders with styled code blocks
+    // Replace placeholders with syntax-highlighted code (no box, just highlighted inline)
     for (let i = 0; i < codeBlocks.length; i++) {
-      rendered = rendered.replace(`%%CODE_${i}%%`, renderCodeBlock(codeBlocks[i].lang, codeBlocks[i].code));
+      rendered = rendered.replace(`%%CODE_${i}%%`, renderCodeInline(codeBlocks[i].lang, codeBlocks[i].code));
     }
 
     return rendered
@@ -56,7 +55,7 @@ export function renderMarkdown(text: string): string {
   }
 }
 
-function renderCodeBlock(lang: string, code: string): string {
+function renderCodeInline(lang: string, code: string): string {
   let highlighted: string;
   if (highlightFn && lang) {
     try {
@@ -68,13 +67,5 @@ function renderCodeBlock(lang: string, code: string): string {
     highlighted = chalk.hex("#C9A87C")(code);
   }
 
-  const bg = chalk.bgHex("#1E1B18");
-  const dim = chalk.hex("#4A3F35");
-  const langLabel = lang ? dim(`  ${lang}`) : "";
-
-  const lines = highlighted.split("\n");
-  const body = lines.map(l => bg(`  ${l}  `));
-
-  return "\n" + langLabel + "\n" + body.join("\n") + "\n";
+  return "\n" + highlighted + "\n";
 }
-

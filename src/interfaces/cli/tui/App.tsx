@@ -67,9 +67,11 @@ export function App({ client }: AppProps) {
     const unsub = client.onEvent((channel, payload) => {
       const data = payload as Record<string, unknown>;
 
-      // Track all events for sidebar
-      const summary = data.task as string ?? data.result as string ?? data.error as string ?? data.reason as string ?? "";
-      setEvents((prev) => [...prev.slice(-30), { channel, summary: summary.slice(0, 80), timestamp: Date.now() }]);
+      // Track events for sidebar — skip noisy message/interface events
+      if (!channel.startsWith("message:") && !channel.startsWith("interface:")) {
+        const summary = data.task as string ?? data.result as string ?? data.error as string ?? data.reason as string ?? "";
+        setEvents((prev) => [...prev.slice(-30), { channel, summary: summary.slice(0, 80), timestamp: Date.now() }]);
+      }
 
       switch (channel) {
         case "agent:spawned":
