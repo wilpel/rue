@@ -4,7 +4,7 @@ import * as path from "node:path";
 import * as os from "node:os";
 import { SchedulerService, computeNextRun } from "../../src/scheduler/scheduler.service.js";
 import { DatabaseService } from "../../src/database/database.service.js";
-import type { DelegateService } from "../../src/agents/delegate.service.js";
+import { MessageRepository } from "../../src/memory/message.repository.js";
 
 describe("computeNextRun", () => {
   it("parses 'every 5m'", () => {
@@ -36,13 +36,14 @@ describe("SchedulerService", () => {
   let tmpDir: string;
   let dbService: DatabaseService;
   let scheduler: SchedulerService;
-  let mockDelegate: DelegateService;
+  const mockBus = { emit: vi.fn(), on: vi.fn() };
 
   beforeEach(() => {
+    vi.clearAllMocks();
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "rue-sched-test-"));
     dbService = new DatabaseService(tmpDir);
-    mockDelegate = { spawn: vi.fn().mockResolvedValue(undefined), listDelegates: vi.fn(), getDelegate: vi.fn(), shutdown: vi.fn() } as unknown as DelegateService;
-    scheduler = new SchedulerService(dbService, mockDelegate);
+    const messages = new MessageRepository(dbService);
+    scheduler = new SchedulerService(dbService, mockBus as any, messages);
   });
 
   afterEach(() => {
@@ -64,7 +65,7 @@ describe("SchedulerService", () => {
 
     const count = scheduler.tick();
     expect(count).toBe(1);
-    expect(mockDelegate.spawn).toHaveBeenCalled();
+    expect(mockBus.emit).toHaveBeenCalledWith("task:updated", expect.objectContaining({ status: "triggered" }));
   });
 
   it("fires due reminder tasks", () => {
@@ -73,7 +74,7 @@ describe("SchedulerService", () => {
 
     const count = scheduler.tick();
     expect(count).toBe(1);
-    expect(mockDelegate.spawn).toHaveBeenCalled();
+    expect(mockBus.emit).toHaveBeenCalledWith("task:updated", expect.objectContaining({ status: "triggered" }));
   });
 
   it("skips work tasks", () => {
@@ -97,25 +98,21 @@ describe("SchedulerService", () => {
     expect(scheduler.tick()).toBe(0);
   });
 
-  it("updates due_at for recurring tasks", async () => {
+  it("updates due_at for recurring tasks", () => {
     const now = Date.now();
     insertTask("t6", "recurring", "every 5m", "scheduled", now - 1000);
 
     scheduler.tick();
-    // Wait for async delegate to complete
-    await new Promise(r => setTimeout(r, 50));
     const updated = dbService.getDb().prepare("SELECT * FROM tasks WHERE id = ?").get("t6") as { due_at: number; status: string };
     expect(updated.due_at).toBeGreaterThan(now);
     expect(updated.status).toBe("pending");
   });
 
-  it("completes one-shot tasks", async () => {
+  it("completes one-shot tasks", () => {
     const now = Date.now();
     insertTask("t7", "oneshot", "in 1m", "scheduled", now - 1000);
 
     scheduler.tick();
-    // Wait for async delegate to complete
-    await new Promise(r => setTimeout(r, 50));
     const updated = dbService.getDb().prepare("SELECT * FROM tasks WHERE id = ?").get("t7") as { status: string; completed_at: number };
     expect(updated.status).toBe("completed");
     expect(updated.completed_at).toBeGreaterThan(0);

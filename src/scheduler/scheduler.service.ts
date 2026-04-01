@@ -1,6 +1,7 @@
 import { Injectable, Inject, OnModuleInit, OnModuleDestroy } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service.js";
-import { DelegateService } from "../agents/delegate.service.js";
+import { BusService } from "../bus/bus.service.js";
+import { MessageRepository } from "../memory/message.repository.js";
 import { log } from "../shared/logger.js";
 import type { Task } from "../tasks/task.service.js";
 
@@ -41,7 +42,8 @@ export class SchedulerService implements OnModuleInit, OnModuleDestroy {
 
   constructor(
     @Inject(DatabaseService) private readonly db: DatabaseService,
-    @Inject(DelegateService) private readonly delegate: DelegateService,
+    @Inject(BusService) private readonly bus: BusService,
+    @Inject(MessageRepository) private readonly messages: MessageRepository,
   ) {}
 
   onModuleInit(): void {
@@ -76,37 +78,30 @@ export class SchedulerService implements OnModuleInit, OnModuleDestroy {
   private executeTask(task: Task, now: number): void {
     log.info(`[scheduler] Firing task "${task.title}": ${task.description ?? task.title}`);
 
-    // Mark as active while running
-    this.db.getDb().prepare(
-      "UPDATE tasks SET status = 'active', agent_id = 'scheduler', updated_at = ? WHERE id = ?",
-    ).run(now, task.id);
+    // Post as a channel message so the main agent sees it and decides what to do
+    const content = `[SCHEDULED EVENT TRIGGERED] ${task.title}${task.description ? `: ${task.description}` : ""}`;
+    this.messages.append({
+      role: "channel",
+      content,
+      metadata: { tag: "SYSTEM_SCHEDULER", taskId: task.id },
+    });
 
-    // Spawn delegate to do the actual work
-    this.delegate.spawn(task.description ?? task.title, 0, undefined, { name: task.title })
-      .then(() => {
-        const completedAt = Date.now();
-        if (task.schedule && isRecurring(task.schedule)) {
-          // Recurring: reset to pending with next due_at
-          const nextDue = computeNextRun(task.schedule, completedAt);
-          this.db.getDb().prepare(
-            "UPDATE tasks SET status = 'pending', due_at = ?, agent_id = NULL, updated_at = ? WHERE id = ?",
-          ).run(nextDue, completedAt, task.id);
-          log.info(`[scheduler] Recurring task "${task.title}" rescheduled for ${nextDue ? new Date(nextDue).toISOString() : "unknown"}`);
-        } else {
-          // One-shot: mark completed
-          this.db.getDb().prepare(
-            "UPDATE tasks SET status = 'completed', completed_at = ?, agent_id = NULL, updated_at = ? WHERE id = ?",
-          ).run(completedAt, completedAt, task.id);
-        }
-      })
-      .catch(err => {
-        const errMsg = err instanceof Error ? err.message : String(err);
-        log.error(`[scheduler] Task "${task.title}" failed: ${errMsg}`);
-        // Mark as failed, not pending — prevents re-firing
-        this.db.getDb().prepare(
-          "UPDATE tasks SET status = 'failed', agent_id = NULL, updated_at = ? WHERE id = ?",
-        ).run(Date.now(), task.id);
-      });
+    // Emit bus event so the gateway/channel service can trigger the main agent
+    this.bus.emit("task:updated", { id: task.id, nodeId: task.id, status: "triggered" });
+
+    if (task.schedule && isRecurring(task.schedule)) {
+      // Recurring: compute next due_at, keep pending
+      const nextDue = computeNextRun(task.schedule, now);
+      this.db.getDb().prepare(
+        "UPDATE tasks SET due_at = ?, updated_at = ? WHERE id = ?",
+      ).run(nextDue, now, task.id);
+      log.info(`[scheduler] Recurring task "${task.title}" rescheduled for ${nextDue ? new Date(nextDue).toISOString() : "unknown"}`);
+    } else {
+      // One-shot: mark completed
+      this.db.getDb().prepare(
+        "UPDATE tasks SET status = 'completed', completed_at = ?, updated_at = ? WHERE id = ?",
+      ).run(now, now, task.id);
+    }
   }
 
   listJobs(): Task[] {

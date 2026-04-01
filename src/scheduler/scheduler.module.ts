@@ -1,9 +1,9 @@
 import { Module } from "@nestjs/common";
 import { SchedulerService } from "./scheduler.service.js";
-import { AgentsModule } from "../agents/agents.module.js";
+import { MemoryModule } from "../memory/memory.module.js";
 
 @Module({
-  imports: [AgentsModule],
+  imports: [MemoryModule],
   providers: [SchedulerService],
   exports: [SchedulerService],
 })

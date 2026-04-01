@@ -195,6 +195,57 @@ export class DaemonGateway implements OnGatewayConnection, OnGatewayDisconnect, 
       });
       unsubs.push(unsubQuestion);
 
+      // When a scheduled task fires, re-trigger the main agent with the event
+      const unsubSchedule = this.bus.on("task:updated", async (payload) => {
+        if (ws.readyState !== ws.OPEN) return;
+        if (payload.status !== "triggered") return;
+
+        const recentMessages = this.messages.recent(20);
+        const history = recentMessages.map(m => {
+          const tag = (m.metadata as Record<string, unknown>)?.tag ?? (m.role === "assistant" ? "AGENT_RUE" : "USER");
+          return `[${tag}] ${m.content}`;
+        }).join("\n");
+
+        const systemPrompt = this.assembler.assemble("");
+        const prompt = `A scheduled event just triggered. Here is the recent conversation including the event:\n\n${history}\n\n---\nRespond to the scheduled event. If it requires action, delegate it. If it's a reminder, inform the user.`;
+
+        const agentId = `gateway-schedule-${Date.now()}`;
+        this.bus.emit("agent:spawned", { id: agentId, task: "Main agent", lane: "main" });
+
+        try {
+          const proc = this.processService.createProcess({
+            id: agentId,
+            task: prompt,
+            lane: "main",
+            workdir: process.cwd(),
+            systemPrompt,
+            timeout: 60_000,
+            maxTurns: 4,
+            model: this.models.primary,
+            allowedTools: ["Bash"],
+          });
+
+          proc.onOutput((chunk) => {
+            if (ws.readyState === ws.OPEN) ws.send(serializeDaemonFrame({ type: "stream", agentId: "main", chunk }));
+          });
+
+          const result = await proc.run();
+          const cleaned = result.output.replace(/\[no_?response\]/gi, "").trim();
+
+          if (cleaned) {
+            this.messages.append({ role: "assistant", content: cleaned });
+            if (ws.readyState === ws.OPEN) ws.send(serializeDaemonFrame({ type: "notify", severity: "info", title: "Scheduled event", body: cleaned }));
+          }
+
+          this.bus.emit("agent:completed", { id: agentId, result: cleaned.slice(0, 100), cost: result.cost });
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          log.error(`[gateway] Schedule handler failed: ${msg}`);
+          this.bus.emit("agent:failed", { id: agentId, error: msg, retryable: false });
+        }
+      });
+      unsubs.push(unsubSchedule);
+
       ws.on("message", async (data: Buffer) => {
         const now = Date.now();
         if (now - lastReset > 60_000) { messageCount = 0; lastReset = now; }
