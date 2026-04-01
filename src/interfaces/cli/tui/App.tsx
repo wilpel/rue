@@ -36,11 +36,16 @@ export function App({ client }: AppProps) {
   const [events, setEvents] = useState<EventEntry[]>([]);
   const [tasks, setTasks] = useState<TaskInfo[]>([]);
   const [usageHistory, setUsageHistory] = useState<Array<{ cost: number; timestamp: number }>>([]);
-  const [_tick, setTick] = useState(0);
+  const [costSinceLastSample, setCostSinceLastSample] = useState(0);
 
-  // 1-second tick for smooth sidebar updates
+  // Sample usage every 5 seconds — adds a new bar to the graph
   useEffect(() => {
-    const timer = setInterval(() => setTick(t => t + 1), 1000);
+    const timer = setInterval(() => {
+      setCostSinceLastSample((current) => {
+        setUsageHistory((prev) => [...prev.slice(-100), { cost: current, timestamp: Date.now() }]);
+        return 0;
+      });
+    }, 5000);
     return () => clearInterval(timer);
   }, []);
 
@@ -133,7 +138,7 @@ export function App({ client }: AppProps) {
           if (typeof data.cost === "number") {
             const cost = data.cost as number;
             setTotalCost((prev) => prev + cost);
-            setUsageHistory((prev) => [...prev.slice(-50), { cost, timestamp: Date.now() }]);
+            setCostSinceLastSample((prev) => prev + cost);
           }
           setAgents((prev) => {
             const next = new Map(prev);
