@@ -64,11 +64,65 @@ export class DaemonGateway implements OnGatewayConnection, OnGatewayDisconnect, 
       let messageCount = 0;
       let lastReset = Date.now();
 
-      // Auto-forward delegate results as notify frames so TUI can show them
-      const unsub = this.bus.on("delegate:result" as any, (payload: { agentId: string; output: string; chatId: string | number }) => {
-        if (ws.readyState === ws.OPEN) {
-          ws.send(serializeDaemonFrame({ type: "notify", severity: "info", title: "Delegate result", body: payload.output }));
-          this.messages.append({ role: "assistant", content: payload.output });
+      // When a delegate finishes, re-trigger the main agent so it can respond with the result
+      const unsub = this.bus.on("delegate:result" as any, async (payload: { agentId: string; output: string; chatId: string | number }) => {
+        if (ws.readyState !== ws.OPEN) return;
+
+        // Store the delegate result in message history
+        this.messages.append({ role: "channel" as any, content: payload.output, metadata: { tag: `AGENT_DELEGATE_${payload.agentId}` } });
+
+        // Re-run the main agent with the delegate result as context
+        const recentMessages = this.messages.recent(20);
+        const history = recentMessages.map(m => {
+          const tag = (m.metadata as any)?.tag ?? (m.role === "assistant" ? "AGENT_RUE" : "USER");
+          return `[${tag}] ${m.content}`;
+        }).join("\n");
+
+        const systemPrompt = this.assembler.assemble("");
+        const prompt = `A background delegate agent just completed and posted its result to your conversation.\n\nHere is the recent conversation:\n\n${history}\n\n---\nRespond to the user with the delegate's result. Summarize or format it as appropriate.`;
+
+        const agentId = `gateway-followup-${Date.now()}`;
+        this.bus.emit("agent:spawned", { id: agentId, task: "Processing delegate result", lane: "main" });
+
+        try {
+          const proc = this.processService.createProcess({
+            id: agentId,
+            task: prompt,
+            lane: "main",
+            workdir: process.cwd(),
+            systemPrompt,
+            timeout: 60_000,
+            maxTurns: 2,
+            model: this.models.primary,
+            allowedTools: ["Bash"],
+          });
+
+          proc.onOutput((chunk) => {
+            if (ws.readyState === ws.OPEN) {
+              ws.send(serializeDaemonFrame({ type: "stream", agentId: "main", chunk }));
+            }
+          });
+
+          const result = await proc.run();
+          const cleaned = result.output.replace(/\[no_?response\]/gi, "").trim();
+          if (cleaned) {
+            this.messages.append({ role: "assistant", content: cleaned });
+          }
+
+          this.bus.emit("agent:completed", { id: agentId, result: cleaned.slice(0, 100), cost: result.cost });
+
+          // Send as a notify so TUI creates a new message bubble
+          if (ws.readyState === ws.OPEN) {
+            ws.send(serializeDaemonFrame({ type: "notify", severity: "info", title: "Delegate result", body: cleaned }));
+          }
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          log.error(`[gateway] Delegate follow-up failed: ${msg}`);
+          this.bus.emit("agent:failed", { id: agentId, error: msg, retryable: false });
+          // Fallback: show raw delegate output
+          if (ws.readyState === ws.OPEN) {
+            ws.send(serializeDaemonFrame({ type: "notify", severity: "info", title: "Delegate result", body: payload.output }));
+          }
         }
       });
       let unsubs = wsUnsubscribers.get(ws);
