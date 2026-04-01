@@ -6,6 +6,7 @@ import type { ClaudeProcessService } from "../../src/agents/claude-process.servi
 import type { AssemblerService } from "../../src/memory/assembler.service.js";
 import type { MessageRepository } from "../../src/memory/message.repository.js";
 import type { SessionService } from "../../src/memory/session.service.js";
+import type { DelegateService } from "../../src/agents/delegate.service.js";
 import type { ConfigService } from "../../src/config/config.service.js";
 
 function createGateway() {
@@ -15,9 +16,10 @@ function createGateway() {
   const mockAssembler = { assemble: vi.fn().mockReturnValue("system prompt") } as unknown as AssemblerService;
   const mockMessages = { append: vi.fn(), recent: vi.fn().mockReturnValue([]) } as unknown as MessageRepository;
   const mockSessions = { get: vi.fn(), set: vi.fn(), clear: vi.fn() } as unknown as SessionService;
+  const mockDelegate = { postQuestion: vi.fn(), postAnswer: vi.fn(), getAnswer: vi.fn(), getPendingQuestion: vi.fn() } as unknown as DelegateService;
   const mockConfig = { models: { primary: "test", fallback: [] }, port: 0 } as unknown as ConfigService;
 
-  return new DaemonGateway(bus, mockSupervisor, mockProcess, mockAssembler, mockMessages, mockSessions, mockConfig);
+  return new DaemonGateway(bus, mockSupervisor, mockProcess, mockAssembler, mockMessages, mockSessions, mockDelegate, mockConfig);
 }
 
 describe("DaemonGateway", () => {

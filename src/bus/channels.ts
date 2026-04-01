@@ -21,6 +21,8 @@ export interface BusChannels {
   "agent:failover": { id: string; fromModel: string; toModel: string; reason: string };
   "system:maintenance": { deletedMessages: number; deletedEvents: number };
   "delegate:result": { agentId: string; output: string; chatId: string | number };
+  "delegate:question": { agentId: string; question: string; chatId: string | number };
+  "delegate:answer": { agentId: string; answer: string };
 }
 
 export type ChannelName = keyof BusChannels;

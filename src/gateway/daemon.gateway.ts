@@ -9,6 +9,7 @@ import { ClaudeProcessService } from "../agents/claude-process.service.js";
 import { AssemblerService } from "../memory/assembler.service.js";
 import { MessageRepository } from "../memory/message.repository.js";
 import { SessionService } from "../memory/session.service.js";
+import { DelegateService } from "../agents/delegate.service.js";
 import { ConfigService } from "../config/config.service.js";
 import { log } from "../shared/logger.js";
 
@@ -34,6 +35,7 @@ export class DaemonGateway implements OnGatewayConnection, OnGatewayDisconnect, 
     @Inject(AssemblerService) private readonly assembler: AssemblerService,
     @Inject(MessageRepository) private readonly messages: MessageRepository,
     @Inject(SessionService) private readonly sessions: SessionService,
+    @Inject(DelegateService) private readonly delegate: DelegateService,
     @Inject(ConfigService) config: ConfigService,
   ) {
     this.models = config.models;
@@ -133,6 +135,63 @@ export class DaemonGateway implements OnGatewayConnection, OnGatewayDisconnect, 
       let unsubs = wsUnsubscribers.get(ws);
       if (!unsubs) { unsubs = []; wsUnsubscribers.set(ws, unsubs); }
       unsubs.push(unsub);
+
+      // When a delegate asks a question, run the main agent to answer it
+      const unsubQuestion = this.bus.on("delegate:question", async (payload) => {
+        if (ws.readyState !== ws.OPEN) return;
+        const cid = String(payload.chatId);
+        if (cid && !cid.startsWith("cli-") && cid !== "0" && cid !== "undefined") return;
+
+        this.messages.append({ role: "channel", content: `[Question from delegate ${payload.agentId}]: ${payload.question}`, metadata: { tag: "DELEGATE_QUESTION" } });
+
+        const recentMessages = this.messages.recent(20);
+        const history = recentMessages.map(m => {
+          const tag = (m.metadata as Record<string, unknown>)?.tag ?? (m.role === "assistant" ? "AGENT_RUE" : "USER");
+          return `[${tag}] ${m.content}`;
+        }).join("\n");
+
+        const systemPrompt = this.assembler.assemble("");
+        const prompt = `A background delegate agent (${payload.agentId}) has paused and is asking you a question:\n\n"${payload.question}"\n\nHere is the recent conversation for context:\n\n${history}\n\n---\nAnswer the delegate's question. Your response will be sent directly back to the delegate agent so it can continue its work. Be concise and direct.`;
+
+        const followupId = `gateway-answer-${Date.now()}`;
+        this.bus.emit("agent:spawned", { id: followupId, task: "Answering delegate question", lane: "main" });
+
+        try {
+          const proc = this.processService.createProcess({
+            id: followupId,
+            task: prompt,
+            lane: "main",
+            workdir: process.cwd(),
+            systemPrompt,
+            timeout: 60_000,
+            maxTurns: 2,
+            model: this.models.primary,
+            allowedTools: ["Bash"],
+          });
+
+          proc.onOutput((chunk) => {
+            if (ws.readyState === ws.OPEN) ws.send(serializeDaemonFrame({ type: "stream", agentId: "main", chunk }));
+          });
+
+          const result = await proc.run();
+          const cleaned = result.output.replace(/\[no_?response\]/gi, "").trim();
+
+          // Post answer back to the delegate
+          this.delegate.postAnswer(payload.agentId, cleaned || "No answer available");
+
+          if (cleaned) {
+            this.messages.append({ role: "assistant", content: cleaned });
+            if (ws.readyState === ws.OPEN) ws.send(serializeDaemonFrame({ type: "notify", severity: "info", title: "Delegate answer", body: cleaned }));
+          }
+
+          this.bus.emit("agent:completed", { id: followupId, result: cleaned.slice(0, 100), cost: result.cost });
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          this.delegate.postAnswer(payload.agentId, `Error: ${msg}`);
+          this.bus.emit("agent:failed", { id: followupId, error: msg, retryable: false });
+        }
+      });
+      unsubs.push(unsubQuestion);
 
       ws.on("message", async (data: Buffer) => {
         const now = Date.now();

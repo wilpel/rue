@@ -26,4 +26,19 @@ export class DelegatesController {
     this.delegate.spawn(body.task, chatId, body.messageId, { name: body.name }).catch(err => log.error(`[delegates] Spawn failed: ${err instanceof Error ? err.message : err}`));
     return { ok: true };
   }
+
+  @Post("delegate/:id/ask")
+  @HttpCode(200)
+  askQuestion(@Param("id") id: string, @Body() body: { question: string }) {
+    if (!body.question) return { error: "question is required" };
+    this.delegate.postQuestion(id, body.question);
+    return { ok: true };
+  }
+
+  @Get("delegate/:id/answer")
+  getAnswer(@Param("id") id: string) {
+    const answer = this.delegate.getAnswer(id);
+    if (answer) return { answer };
+    return { pending: true };
+  }
 }
