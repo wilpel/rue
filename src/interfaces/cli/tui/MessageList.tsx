@@ -74,7 +74,7 @@ export function MessageList({ messages, height, width, isLoading }: MessageListP
     <Box flexDirection="column" height={height} overflow="hidden">
       <Box flexDirection="column" paddingX={1}>
         {visible.map((line, i) => (
-          <Text key={scrollOffset + i} wrap="truncate">{line}</Text>
+          <Text key={scrollOffset + i} wrap="wrap">{line}</Text>
         ))}
       </Box>
       {/* Scroll indicator */}

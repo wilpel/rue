@@ -16,7 +16,7 @@ export interface EventEntry {
 }
 
 export function Sidebar({ agents, events, height, width }: SidebarProps) {
-  const agentPanelHeight = Math.max(5, Math.floor(height * 0.4));
+  const agentPanelHeight = Math.max(4, Math.floor(height * 0.3));
   const eventPanelHeight = height - agentPanelHeight;
 
   return (
@@ -63,20 +63,20 @@ function SidebarAgentRow({ agent, maxWidth }: { agent: AgentActivity; maxWidth: 
   const color = isActive ? activeColor : agent.state === "completed" ? "#6B6560" : "#C47070";
   const icon = isActive ? "" : agent.state === "completed" ? "+" : "x";
   const elapsed = formatElapsed(Date.now() - agent.startedAt);
-  const taskLen = Math.max(10, maxWidth - 12);
-  const task = agent.task.length > taskLen ? agent.task.slice(0, taskLen - 3) + "..." : agent.task;
 
   return (
-    <Box paddingLeft={1}>
+    <Box paddingLeft={1} width={maxWidth}>
       <Text color={color}>{isActive ? <RueSpinner /> : icon} </Text>
-      <Text color={isMain ? "#8BA87A" : "#6B6560"}>{task} </Text>
+      <Text color={isMain ? "#8BA87A" : "#6B6560"} wrap="truncate">{agent.task} </Text>
       <Text color="#4A3F35">{elapsed}</Text>
     </Box>
   );
 }
 
 function EventsPanel({ events, height, width }: { events: EventEntry[]; height: number; width: number }) {
-  const visible = events.slice(-(height - 2));
+  // Show latest events first (reversed), limited to fit
+  const reversed = [...events].reverse().slice(0, height - 2);
+  const contentWidth = width - 4;
 
   return (
     <Box flexDirection="column" height={height} paddingX={1}>
@@ -86,14 +86,14 @@ function EventsPanel({ events, height, width }: { events: EventEntry[]; height: 
       <Box borderStyle="single" borderColor="#3A3530" borderTop borderBottom={false} borderLeft={false} borderRight={false}>
         <Text> </Text>
       </Box>
-      {visible.length === 0 ? (
+      {reversed.length === 0 ? (
         <Box paddingLeft={1}>
           <Text color="#4A3F35">no events</Text>
         </Box>
       ) : (
         <Box flexDirection="column">
-          {visible.map((evt, i) => (
-            <EventRow key={`${evt.timestamp}-${i}`} event={evt} maxWidth={width - 4} />
+          {reversed.map((evt, i) => (
+            <EventRow key={`${evt.timestamp}-${i}`} event={evt} maxWidth={contentWidth} />
           ))}
         </Box>
       )}
@@ -103,19 +103,26 @@ function EventsPanel({ events, height, width }: { events: EventEntry[]; height: 
 
 function EventRow({ event, maxWidth }: { event: EventEntry; maxWidth: number }) {
   const time = formatTime(event.timestamp);
-  const channelColor = event.channel.startsWith("agent:") ? "#D4956B"
+  const tag = event.channel.split(":").pop() ?? event.channel;
+
+  const channelColor = event.channel === "delegate:question" ? "#7AA2D4"
+    : event.channel === "delegate:answer" ? "#8BA87A"
+    : event.channel.startsWith("agent:") ? "#D4956B"
     : event.channel.startsWith("system:") ? "#8BA87A"
     : event.channel.startsWith("task:") ? "#7AA2D4"
     : "#6B6560";
-  const tag = event.channel.split(":").pop() ?? event.channel;
-  const summaryLen = Math.max(5, maxWidth - tag.length - 8);
-  const summary = event.summary.length > summaryLen ? event.summary.slice(0, summaryLen - 3) + "..." : event.summary;
 
   return (
-    <Box paddingLeft={1}>
-      <Text color="#4A3F35">{time} </Text>
-      <Text color={channelColor} bold>{tag} </Text>
-      <Text color="#6B6560">{summary}</Text>
+    <Box paddingLeft={1} flexDirection="column" width={maxWidth}>
+      <Box>
+        <Text color="#4A3F35">{time} </Text>
+        <Text color={channelColor} bold>{tag} </Text>
+      </Box>
+      {event.summary ? (
+        <Box paddingLeft={2} width={maxWidth - 2}>
+          <Text color="#6B6560" wrap="wrap">{event.summary}</Text>
+        </Box>
+      ) : null}
     </Box>
   );
 }

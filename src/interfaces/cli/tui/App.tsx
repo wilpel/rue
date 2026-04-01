@@ -84,8 +84,15 @@ export function App({ client }: AppProps) {
 
       // Track events for sidebar — skip noisy message/interface events
       if (!channel.startsWith("message:") && !channel.startsWith("interface:")) {
-        const summary = data.task as string ?? data.result as string ?? data.error as string ?? data.reason as string ?? "";
-        setEvents((prev) => [...prev.slice(-30), { channel, summary: summary.slice(0, 80), timestamp: Date.now() }]);
+        let summary = "";
+        if (channel === "delegate:question") {
+          summary = `❓ ${data.question as string ?? ""}`;
+        } else if (channel === "delegate:answer") {
+          summary = `💬 ${data.answer as string ?? ""}`;
+        } else {
+          summary = data.task as string ?? data.result as string ?? data.error as string ?? data.reason as string ?? data.output as string ?? "";
+        }
+        setEvents((prev) => [...prev.slice(-50), { channel, summary, timestamp: Date.now() }]);
       }
 
       switch (channel) {
