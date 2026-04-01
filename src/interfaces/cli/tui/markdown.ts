@@ -2,33 +2,24 @@ import { Marked } from "marked";
 import { markedTerminal } from "marked-terminal";
 import chalk from "chalk";
 
-// Cozy warm palette
-const WARM = {
-  heading: chalk.hex("#E8B87A").bold,
-  codeFrame: chalk.hex("#4A3F35"),
-  codeLang: chalk.hex("#8BA87A"),
-  codeText: chalk.hex("#C9A87C"),
-  codeSpan: chalk.hex("#E8B87A"),
-  blockquote: chalk.hex("#A89080"),
-  link: chalk.hex("#D4956B").underline,
-  strong: chalk.hex("#E8CDA0").bold,
-  em: chalk.hex("#C9B89A").italic,
-};
+let highlightFn: ((code: string, opts?: { language?: string }) => string) | null = null;
+try {
+  const mod = await import("cli-highlight");
+  highlightFn = mod.highlight;
+} catch { /* syntax highlighting unavailable */ }
 
 const marked = new Marked();
 
 marked.use(
   markedTerminal({
-    // Styling options for marked-terminal v7
     codespan: (text: string) => chalk.hex("#E8B87A").bgHex("#2A2520")(` ${text} `),
-    strong: (text: string) => WARM.strong(text),
-    em: (text: string) => WARM.em(text),
-    heading: (text: string) => "\n" + WARM.heading(text),
+    strong: (text: string) => chalk.hex("#E8CDA0").bold(text),
+    em: (text: string) => chalk.hex("#C9B89A").italic(text),
+    heading: (text: string) => "\n" + chalk.hex("#E8B87A").bold(text),
     blockquote: (text: string) => chalk.hex("#A89080")(`  │ ${text}`),
-    link: (href: string, _title: string, text: string) => `${text} ${WARM.link(`(${href})`)}`,
+    link: (href: string, _title: string, text: string) => `${text} ${chalk.hex("#D4956B").underline(`(${href})`)}`,
     list: (body: string) => "\n" + body,
     listitem: (text: string) => {
-      // Strip any leading bullet/star from marked-terminal default
       const clean = text.replace(/^\s*[*\-•]\s*/, "").trim();
       return `  ${chalk.hex("#E8B87A")("•")} ${clean}\n`;
     },
@@ -39,34 +30,25 @@ marked.use(
   } as any),
 );
 
-/**
- * Render markdown with code blocks as styled terminal windows.
- * marked-terminal handles basic markdown; we post-process code blocks
- * into framed windows.
- */
 export function renderMarkdown(text: string): string {
   try {
-    // Pre-process: extract code blocks and replace with placeholders
+    // Extract code blocks, replace with placeholders
     const codeBlocks: Array<{ lang: string; code: string }> = [];
     const withPlaceholders = text.replace(/```(\w*)\n([\s\S]*?)```/g, (_match, lang: string, code: string) => {
-      const idx = codeBlocks.length;
       codeBlocks.push({ lang, code: code.trimEnd() });
-      return `\n%%CODEBLOCK_${idx}%%\n`;
+      return `\n%%CODE_${codeBlocks.length - 1}%%\n`;
     });
 
-    // Render non-code markdown
+    // Render markdown (without code blocks)
     let rendered = marked.parse(withPlaceholders) as string;
 
-    // Replace placeholders with styled code windows
+    // Replace placeholders with styled code blocks
     for (let i = 0; i < codeBlocks.length; i++) {
-      const { lang, code } = codeBlocks[i];
-      const window = renderCodeWindow(lang, code);
-      rendered = rendered.replace(`%%CODEBLOCK_${i}%%`, window);
+      rendered = rendered.replace(`%%CODE_${i}%%`, renderCodeBlock(codeBlocks[i].lang, codeBlocks[i].code));
     }
 
-    // Clean up: remove default bullet prefix from marked-terminal, collapse blank lines
     return rendered
-      .replace(/^(\s*)\*\s+(•)/gm, "$1$2")  // line-level: "  *   •" → "  •"
+      .replace(/^(\s*)\*\s+(•)/gm, "$1$2")
       .replace(/\n{3,}/g, "\n\n")
       .trim();
   } catch {
@@ -74,27 +56,44 @@ export function renderMarkdown(text: string): string {
   }
 }
 
-function renderCodeWindow(lang: string, code: string): string {
-  const lines = code.split("\n");
-  const maxLen = Math.max(...lines.map(l => l.length), 30);
-  const width = maxLen + 2;
+function renderCodeBlock(lang: string, code: string): string {
+  // Syntax highlight if available
+  let highlighted: string;
+  if (highlightFn && lang) {
+    try {
+      highlighted = highlightFn(code, { language: lang });
+    } catch {
+      highlighted = chalk.hex("#C9A87C")(code);
+    }
+  } else {
+    highlighted = chalk.hex("#C9A87C")(code);
+  }
 
-  // Window chrome: colored dots + language label
-  const dots = chalk.hex("#C47070")("●") + " " + chalk.hex("#D4956B")("●") + " " + chalk.hex("#8BA87A")("●");
-  const langLabel = lang ? ` ${lang} ` : " ";
-  const padLen = Math.max(0, width - 6 - langLabel.length);
-  const topLine = `  ${dots}${WARM.codeLang(langLabel)}${WARM.codeFrame("─".repeat(padLen))}`;
+  const bg = chalk.bgHex("#1E1B18");
+  const border = chalk.hex("#3A3530");
+  const langTag = lang ? chalk.hex("#6B6560")(` ${lang} `) : "";
 
-  // Code lines with left border
-  const bodyLines = lines.map(l => {
-    const padded = l.padEnd(maxLen);
-    return `  ${WARM.codeFrame("│")} ${WARM.codeText(padded)} ${WARM.codeFrame("│")}`;
+  const lines = highlighted.split("\n");
+  const maxLen = Math.max(...lines.map(stripAnsi).map(l => l.length), 20);
+  const width = maxLen + 4;
+
+  // Top border with language tag
+  const topPad = Math.max(0, width - stripAnsi(langTag).length - 2);
+  const top = border("  ╭") + langTag + border("─".repeat(topPad)) + border("╮");
+
+  // Code lines with background
+  const body = lines.map(l => {
+    const visLen = stripAnsi(l).length;
+    const pad = " ".repeat(Math.max(0, maxLen - visLen));
+    return border("  │ ") + bg(l + pad) + border(" │");
   });
 
   // Bottom border
-  const bottomLine = `  ${WARM.codeFrame("╰" + "─".repeat(width) + "╯")}`;
+  const bottom = border("  ╰" + "─".repeat(width) + "╯");
 
-  return "\n" + topLine + "\n" + bodyLines.join("\n") + "\n" + bottomLine;
+  return "\n" + top + "\n" + body.join("\n") + "\n" + bottom;
 }
 
-export { WARM };
+function stripAnsi(str: string): string {
+  return str.replace(/\x1b\[[0-9;]*m/g, "");
+}
