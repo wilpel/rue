@@ -12,6 +12,7 @@ export interface AgentConfig {
   budget?: number;
   allowedTools?: string[];
   model?: string;
+  resume?: string;
 }
 
 export interface AgentHandle {

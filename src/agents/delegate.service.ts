@@ -11,8 +11,8 @@ export interface DelegateInfo {
   startedAt: number;
   result?: string;
   activity: string[];
-  chatId: number;
-  messageId?: number;
+  chatId: string | number;
+  messageId?: string | number;
 }
 
 interface ActiveDelegate {
@@ -35,8 +35,8 @@ export class DelegateService {
 
   async spawn(
     task: string,
-    chatId: number,
-    messageId?: number,
+    chatId: string | number,
+    messageId?: string | number,
     opts?: { maxRetries?: number },
   ): Promise<void> {
     const agentId = `delegate-${Date.now()}`;

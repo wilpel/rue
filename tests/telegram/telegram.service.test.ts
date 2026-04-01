@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
-import { TelegramStoreService } from "../../src/telegram/telegram-store.service.js";
+import { TelegramStoreService } from "../../src/channels/adapters/telegram-store.service.js";
 
 describe("TelegramStoreService", () => {
   let tmpDir: string;

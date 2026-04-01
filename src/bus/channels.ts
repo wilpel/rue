@@ -20,6 +20,7 @@ export interface BusChannels {
   "message:created": { id: string; role: string; content: string; timestamp: number; sessionId?: string; metadata?: Record<string, unknown> };
   "agent:failover": { id: string; fromModel: string; toModel: string; reason: string };
   "system:maintenance": { deletedMessages: number; deletedEvents: number };
+  "delegate:result": { agentId: string; output: string; chatId: string | number };
 }
 
 export type ChannelName = keyof BusChannels;

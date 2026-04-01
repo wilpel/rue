@@ -14,6 +14,7 @@ export class AssemblerService {
   private personalityCache: string | null = null;
   private skillsCache: string | null = null;
   private cacheTime = 0;
+  private cachedPromptPaths: string | null = null;
   private readonly CACHE_TTL = 300_000;
   private delegateService: { listDelegates(): Array<{ id: string; task: string; status: string; startedAt: number }> } | null = null;
 
@@ -32,12 +33,20 @@ export class AssemblerService {
 
   reload(): void { this.systemPromptCache = null; this.personalityCache = null; this.skillsCache = null; }
 
-  assemble(task: string): string {
+  assemble(task: string, promptPaths?: { systemPrompt?: string; personality?: string }): string {
     if (Date.now() - this.cacheTime > this.CACHE_TTL) { this.systemPromptCache = null; this.personalityCache = null; this.skillsCache = null; this.cacheTime = Date.now(); }
+    const pathKey = JSON.stringify(promptPaths);
+    if (pathKey !== this.cachedPromptPaths) {
+      this.systemPromptCache = null;
+      this.personalityCache = null;
+      this.cachedPromptPaths = pathKey;
+    }
     const sections: string[] = [];
-    if (this.systemPromptCache === null) this.systemPromptCache = this.readProjectFile("prompts/SYSTEM.md") ?? "";
+    const systemPath = promptPaths?.systemPrompt ?? "prompts/SYSTEM.md";
+    const personalityPath = promptPaths?.personality ?? "prompts/PERSONALITY.md";
+    if (this.systemPromptCache === null) this.systemPromptCache = this.readProjectFile(systemPath) ?? "";
     if (this.systemPromptCache) sections.push(this.systemPromptCache);
-    if (this.personalityCache === null) this.personalityCache = this.readProjectFile("prompts/PERSONALITY.md") ?? "";
+    if (this.personalityCache === null) this.personalityCache = this.readProjectFile(personalityPath) ?? "";
     if (this.personalityCache) sections.push(this.personalityCache);
     const identityText = this.identity.toPromptText();
     if (identityText) sections.push(`## Dynamic Identity\n${identityText}`);

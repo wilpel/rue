@@ -1,7 +1,7 @@
 import { Command } from "commander";
 import { DaemonClient } from "./client.js";
 import { loadConfig } from "../../shared/config.js";
-import { TelegramStoreService } from "../../telegram/telegram-store.service.js";
+import { TelegramStoreService } from "../../channels/adapters/telegram-store.service.js";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
