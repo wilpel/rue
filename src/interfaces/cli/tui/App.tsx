@@ -62,15 +62,16 @@ export function App({ client }: AppProps) {
     }).catch(() => {});
   }, [client]);
 
-  // Poll for active tasks
-  useEffect(() => {
-    const fetchTasks = () => {
-      client.tasks().then(result => setTasks(result.tasks ?? [])).catch(() => {});
-    };
-    fetchTasks();
-    const interval = setInterval(fetchTasks, 10_000);
-    return () => clearInterval(interval);
+  // Poll for active tasks + refresh on task events
+  const fetchTasks = useCallback(() => {
+    client.tasks().then(result => setTasks(result.tasks ?? [])).catch(() => {});
   }, [client]);
+
+  useEffect(() => {
+    fetchTasks();
+    const interval = setInterval(fetchTasks, 3_000);
+    return () => clearInterval(interval);
+  }, [fetchTasks]);
 
   // Listen for async responses (delegate results, scheduled events, answers)
   useEffect(() => {
@@ -93,6 +94,9 @@ export function App({ client }: AppProps) {
 
     const unsub = client.onEvent((channel, payload) => {
       const data = payload as Record<string, unknown>;
+
+      // Refresh tasks on task events
+      if (channel.startsWith("task:")) fetchTasks();
 
       // Track events for sidebar — skip noisy message/interface events
       if (!channel.startsWith("message:") && !channel.startsWith("interface:")) {
