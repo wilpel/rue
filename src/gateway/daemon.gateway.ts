@@ -87,7 +87,7 @@ export class DaemonGateway implements OnGatewayConnection, OnGatewayDisconnect, 
           return `[${tag}] ${m.content}`;
         }).join("\n");
 
-        const systemPrompt = this.assembler.assemble("");
+        const systemPrompt = this.assembler.assemble("", undefined, "followup");
         const prompt = `A background delegate agent just completed and posted its result to your conversation.\n\nHere is the recent conversation:\n\n${history}\n\n---\nRespond to the user with the delegate's result. Summarize or format it as appropriate.`;
 
         const agentId = `gateway-followup-${Date.now()}`;
@@ -152,7 +152,7 @@ export class DaemonGateway implements OnGatewayConnection, OnGatewayDisconnect, 
           return `[${tag}] ${m.content}`;
         }).join("\n");
 
-        const systemPrompt = this.assembler.assemble("");
+        const systemPrompt = this.assembler.assemble("", undefined, "followup");
         const prompt = `A background delegate agent (${payload.agentId}) has paused and is asking you a question:\n\n"${payload.question}"\n\nHere is the recent conversation for context:\n\n${history}\n\n---\nAnswer the delegate's question. Your response will be sent directly back to the delegate agent so it can continue its work. Be concise and direct.`;
 
         const followupId = `gateway-answer-${Date.now()}`;
@@ -206,7 +206,7 @@ export class DaemonGateway implements OnGatewayConnection, OnGatewayDisconnect, 
           return `[${tag}] ${m.content}`;
         }).join("\n");
 
-        const systemPrompt = this.assembler.assemble("");
+        const systemPrompt = this.assembler.assemble("", undefined, "dispatcher");
         const prompt = `A scheduled event just triggered. Here is the recent conversation including the event:\n\n${history}\n\n---\nRespond to the scheduled event. If it requires action, delegate it. If it's a reminder, inform the user.`;
 
         const agentId = `gateway-schedule-${Date.now()}`;
@@ -291,7 +291,7 @@ export class DaemonGateway implements OnGatewayConnection, OnGatewayDisconnect, 
       case "ask": {
         const text = frame.args.text as string;
         log.info(`[gateway] ask: "${text.slice(0, 60)}"`);
-        const systemPrompt = this.assembler.assemble(text);
+        const systemPrompt = this.assembler.assemble(text, undefined, "dispatcher");
 
         this.messages.append({ role: "user", content: text });
 

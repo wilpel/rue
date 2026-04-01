@@ -1,0 +1,1 @@
+{ "name": "delegate-ask", "short": "Post a question back to the orchestrator from a running delegate and wait for the answer." }

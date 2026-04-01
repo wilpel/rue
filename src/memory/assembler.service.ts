@@ -1,12 +1,13 @@
 import { Injectable } from "@nestjs/common";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import * as os from "node:os";
 import { SemanticRepository } from "./semantic.repository.js";
 import { WorkingMemoryService } from "./working-memory.service.js";
 import { KnowledgeBaseService } from "./knowledge-base.service.js";
 import { IdentityService } from "../identity/identity.service.js";
 import { UserModelService } from "../identity/user-model.service.js";
+
+export type AssembleMode = "dispatcher" | "worker" | "followup";
 
 @Injectable()
 export class AssemblerService {
@@ -23,17 +24,17 @@ export class AssemblerService {
   }
 
   constructor(
-    private readonly semantic: SemanticRepository,
-    private readonly working: WorkingMemoryService,
+    _semantic: SemanticRepository,
+    _working: WorkingMemoryService,
     private readonly identity: IdentityService,
     private readonly userModel: UserModelService,
-    private readonly kb: KnowledgeBaseService,
+    _kb: KnowledgeBaseService,
     private readonly projectDir: string,
   ) {}
 
   reload(): void { this.systemPromptCache = null; this.personalityCache = null; this.skillsCache = null; }
 
-  assemble(task: string, promptPaths?: { systemPrompt?: string; personality?: string }): string {
+  assemble(_task: string, promptPaths?: { systemPrompt?: string; personality?: string }, mode: AssembleMode = "dispatcher"): string {
     if (Date.now() - this.cacheTime > this.CACHE_TTL) { this.systemPromptCache = null; this.personalityCache = null; this.skillsCache = null; this.cacheTime = Date.now(); }
     const pathKey = JSON.stringify(promptPaths);
     if (pathKey !== this.cachedPromptPaths) {
@@ -44,53 +45,55 @@ export class AssemblerService {
     const sections: string[] = [];
     const systemPath = promptPaths?.systemPrompt ?? "prompts/SYSTEM.md";
     const personalityPath = promptPaths?.personality ?? "prompts/PERSONALITY.md";
+
+    // System prompt: full for dispatcher/worker, first paragraph only for followup
     if (this.systemPromptCache === null) this.systemPromptCache = this.readProjectFile(systemPath) ?? "";
-    if (this.systemPromptCache) sections.push(this.systemPromptCache);
-    if (this.personalityCache === null) this.personalityCache = this.readProjectFile(personalityPath) ?? "";
-    if (this.personalityCache) sections.push(this.personalityCache);
-    const identityText = this.identity.toPromptText();
-    if (identityText) sections.push(`## Dynamic Identity\n${identityText}`);
-    const userText = this.userModel.toPromptText();
-    if (userText) sections.push(`## User\n${userText}`);
-    const memoryMd = this.loadMemoryMd();
-    if (memoryMd) sections.push(`## Long-term Memory\n${memoryMd}`);
-    const dailyNotes = this.loadDailyNotes();
-    if (dailyNotes) sections.push(`## Recent Notes\n${dailyNotes}`);
-    const semanticText = this.semantic.toPromptText(task, 15);
-    if (semanticText && !semanticText.startsWith("No relevant")) sections.push(`## Knowledge\n${semanticText}`);
-    const kbContext = this.kb.toPromptText();
-    if (kbContext) sections.push(`## Knowledge Base\n${kbContext}`);
-    const workingText = this.working.toPromptText();
-    if (workingText && !workingText.startsWith("No active")) sections.push(`## Current State\n${workingText}`);
-    if (this.skillsCache === null) this.skillsCache = this.discoverSkills() ?? "";
-    if (this.skillsCache) sections.push(this.skillsCache);
-    const delegates = this.delegateService?.listDelegates().filter(d => d.status === "running") ?? [];
-    if (delegates.length > 0) {
-      const lines = delegates.map(d => `- **${d.id}**: "${d.task}" (${d.status}, started ${Math.round((Date.now() - d.startedAt) / 1000)}s ago)`);
-      sections.push(`## Active Delegates\nThese agents are currently working. Do NOT re-delegate work that is already in progress.\n\n${lines.join("\n")}`);
+    if (this.systemPromptCache) {
+      if (mode === "followup") {
+        const firstPara = this.systemPromptCache.split("\n\n")[0];
+        sections.push(firstPara);
+      } else {
+        sections.push(this.systemPromptCache);
+      }
     }
+
+    // Personality: brief (first 3 lines) for dispatcher, full for worker, none for followup
+    if (mode !== "followup") {
+      if (this.personalityCache === null) this.personalityCache = this.readProjectFile(personalityPath) ?? "";
+      if (this.personalityCache) {
+        if (mode === "dispatcher") {
+          const brief = this.personalityCache.split("\n").slice(0, 3).join("\n");
+          sections.push(brief);
+        } else {
+          sections.push(this.personalityCache);
+        }
+      }
+    }
+
+    // Skills index: dispatcher and worker only
+    if (mode === "dispatcher" || mode === "worker") {
+      if (this.skillsCache === null) this.skillsCache = this.discoverSkills() ?? "";
+      if (this.skillsCache) sections.push(this.skillsCache);
+    }
+
+    // Workers get identity + user model for personalization
+    if (mode === "worker") {
+      const identityText = this.identity.toPromptText();
+      if (identityText) sections.push(`## Identity\n${identityText}`);
+      const userText = this.userModel.toPromptText();
+      if (userText) sections.push(`## User\n${userText}`);
+    }
+
+    // Active delegates: dispatcher only
+    if (mode === "dispatcher") {
+      const delegates = this.delegateService?.listDelegates().filter(d => d.status === "running") ?? [];
+      if (delegates.length > 0) {
+        const lines = delegates.map(d => `- **${d.id}**: "${d.task}" (${d.status}, started ${Math.round((Date.now() - d.startedAt) / 1000)}s ago)`);
+        sections.push(`## Active Delegates\nThese agents are currently working. Do NOT re-delegate work that is already in progress.\n\n${lines.join("\n")}`);
+      }
+    }
+
     return sections.join("\n\n");
-  }
-
-  private loadMemoryMd(): string | null {
-    const memPath = path.join(os.homedir(), ".rue", "memory", "MEMORY.md");
-    if (!fs.existsSync(memPath)) return null;
-    const content = fs.readFileSync(memPath, "utf-8").trim();
-    const lines = content.split("\n").filter(l => l.trim() && !l.startsWith("#"));
-    return lines.length === 0 ? null : content;
-  }
-
-  private loadDailyNotes(): string | null {
-    const dailyDir = path.join(os.homedir(), ".rue", "memory", "daily");
-    if (!fs.existsSync(dailyDir)) return null;
-    const today = new Date().toISOString().split("T")[0];
-    const yesterday = new Date(Date.now() - 86400000).toISOString().split("T")[0];
-    const notes: string[] = [];
-    for (const date of [yesterday, today]) {
-      const file = path.join(dailyDir, `${date}.md`);
-      if (fs.existsSync(file)) notes.push(fs.readFileSync(file, "utf-8").trim());
-    }
-    return notes.length > 0 ? notes.join("\n\n") : null;
   }
 
   private readProjectFile(filename: string): string | null {
@@ -103,21 +106,22 @@ export class AssemblerService {
     const skillsDir = path.join(this.projectDir, "skills");
     if (!fs.existsSync(skillsDir)) return null;
     const entries = fs.readdirSync(skillsDir, { withFileTypes: true });
-    const skills: Array<{ name: string; description: string }> = [];
+    const skills: Array<{ name: string; short: string }> = [];
     for (const entry of entries) {
       if (!entry.isDirectory()) continue;
-      const skillMd = path.join(skillsDir, entry.name, "SKILL.md");
-      if (!fs.existsSync(skillMd)) continue;
-      const content = fs.readFileSync(skillMd, "utf-8");
-      const lines = content.split("\n");
-      let description = ""; let foundHeading = false;
-      for (const line of lines) { if (line.startsWith("# ")) { foundHeading = true; continue; } if (foundHeading && line.trim()) { description = line.trim(); break; } }
-      skills.push({ name: entry.name, description });
+      const metaPath = path.join(skillsDir, entry.name, "metadata.json");
+      if (!fs.existsSync(metaPath)) continue;
+      try {
+        const meta = JSON.parse(fs.readFileSync(metaPath, "utf-8"));
+        skills.push({ name: meta.name ?? entry.name, short: meta.short ?? "" });
+      } catch { continue; }
     }
     if (skills.length === 0) return null;
-    const lines = ["## Detected Skills", `Found ${skills.length} skill(s) in the skills/ directory:\n`];
-    for (const skill of skills) lines.push(`- **${skill.name}**: ${skill.description}`);
-    lines.push("\nTo use a skill, read its SKILL.md for exact usage, then run via Bash.");
+    const lines = ["## Skills"];
+    for (const skill of skills) {
+      lines.push(`- **${skill.name}**: ${skill.short}`);
+    }
+    lines.push("\nRun: `node --import tsx/esm skills/<name>/run.ts --help` for usage. Read SKILL.md for full docs.");
     return lines.join("\n");
   }
 }

@@ -140,7 +140,7 @@ export class ChannelService implements OnModuleInit {
     const systemPrompt = this.assembler.assemble("", {
       systemPrompt: route.systemPromptPath,
       personality: route.personalityPath,
-    });
+    }, "dispatcher");
 
     const prompt = `Here is the recent conversation on your channel:\n\n${history}\n\n---\nYour turn. Respond to the latest messages. Use Bash to run skills (delegate, telegram react, kb, etc). To send a message to the user, just output text — it will be sent to Telegram automatically.`;
 

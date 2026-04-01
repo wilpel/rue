@@ -1,0 +1,1 @@
+{ "name": "delegate", "short": "Spawn a background agent to handle work asynchronously. Results delivered back automatically." }
