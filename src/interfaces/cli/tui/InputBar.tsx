@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Box, Text } from "ink";
 import TextInput from "ink-text-input";
+import { COLORS } from "./theme.js";
 
 interface InputBarProps {
   onSubmit: (text: string) => void;
@@ -16,14 +17,16 @@ export function InputBar({ onSubmit, isLoading }: InputBarProps) {
     setValue("");
   };
 
+  const borderColor = isLoading ? COLORS.secondary : COLORS.primary;
+
   return (
     <Box
       borderStyle="round"
-      borderColor={isLoading ? "#D4956B" : "#E8B87A"}
+      borderColor={borderColor}
       paddingX={1}
       marginX={1}
     >
-      <Text color={isLoading ? "#D4956B" : "#E8B87A"} bold>{">"} </Text>
+      <Text color={borderColor} bold>{">"} </Text>
       <TextInput
         value={value}
         onChange={setValue}

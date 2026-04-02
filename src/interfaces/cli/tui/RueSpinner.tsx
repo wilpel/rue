@@ -1,21 +1,16 @@
 import { useState, useEffect } from "react";
 import { Text } from "ink";
+import { COLORS } from "./theme.js";
 
-/**
- * Clean animated spinner for Rue. Two modes:
- * - inline: single-character dots spinner for inline use
- * - block: larger animated indicator for empty state
- */
-
-const INLINE_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+const INLINE_FRAMES = ["\u280B", "\u2819", "\u2839", "\u2838", "\u283C", "\u2834", "\u2826", "\u2827", "\u2807", "\u280F"];
 
 const BLOCK_FRAMES = [
-  "   ●    ",
-  "  ● ●   ",
-  " ●   ●  ",
-  "●     ● ",
-  " ●   ●  ",
-  "  ● ●   ",
+  "   \u25CF    ",
+  "  \u25CF \u25CF   ",
+  " \u25CF   \u25CF  ",
+  "\u25CF     \u25CF ",
+  " \u25CF   \u25CF  ",
+  "  \u25CF \u25CF   ",
 ];
 
 interface RueSpinnerProps {
@@ -34,5 +29,5 @@ export function RueSpinner({ mode = "inline" }: RueSpinnerProps) {
     return () => clearInterval(timer);
   }, [frames.length, interval]);
 
-  return <Text color="#E8B87A">{frames[frame]}</Text>;
+  return <Text color={COLORS.primary}>{frames[frame]}</Text>;
 }
