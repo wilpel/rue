@@ -206,20 +206,20 @@ function UsagePanel({ history, totalCost, totalTokens, height, width }: { histor
 
 function EventsPanel({ events, height, width }: { events: EventEntry[]; height: number; width: number }) {
   // Each event takes ~2 lines (header + summary), so show half of available lines
-  const maxEvents = Math.max(1, Math.floor((height - 2) / 2));
-  const totalEvents = events.length;
-  const reversed = [...events].reverse().slice(0, Math.min(maxEvents, LAYOUT.maxEvents));
-  const overflow = totalEvents - reversed.length;
+  const maxVisible = Math.max(1, Math.floor((height - 2) / 2));
+  const reversed = [...events].reverse();
+  const visible = reversed.slice(0, maxVisible);
+  const overflow = reversed.length - visible.length;
   const contentWidth = width - 4;
 
   return (
     <Box flexDirection="column" height={height} paddingX={1} overflow="hidden">
       <PanelHeader label="Events" />
-      {reversed.length === 0 ? (
+      {visible.length === 0 ? (
         <Box paddingLeft={1}><Text color={COLORS.veryDim}>no events</Text></Box>
       ) : (
         <Box flexDirection="column" overflow="hidden">
-          {reversed.map((evt, i) => (
+          {visible.map((evt, i) => (
             <EventRow key={`${evt.timestamp}-${i}`} event={evt} maxWidth={contentWidth} />
           ))}
           {overflow > 0 && <Box paddingLeft={1}><Text color={COLORS.veryDim}>+{overflow} more</Text></Box>}

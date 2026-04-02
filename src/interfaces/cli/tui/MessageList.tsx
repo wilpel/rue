@@ -4,6 +4,16 @@ import { renderMarkdown } from "./markdown.js";
 import { COLORS } from "./theme.js";
 import type { ChatMessage } from "./App.js";
 
+/** Convert a hex color like "#E8B87A" to an ANSI 24-bit foreground escape */
+function fg(hex: string): string {
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  return `\x1b[38;2;${r};${g};${b}m`;
+}
+
+const RST = "\x1b[0m";
+
 interface MessageListProps {
   messages: ChatMessage[];
   height: number;
@@ -23,7 +33,7 @@ export function MessageList({ messages, height, width, isLoading }: MessageListP
     }
     if (isLoading && !messages.some(m => m.isStreaming && m.content)) {
       lines.push("");
-      lines.push("  \x1b[38;2;168;144;128m⠋ thinking...\x1b[0m");
+      lines.push(`  ${fg(COLORS.quoteText)}⠋ thinking...${RST}`);
     }
     return lines;
   }, [messages, width, isLoading]);
@@ -108,14 +118,13 @@ function wrapLine(line: string, maxWidth: number, indent: string): string[] {
 function renderMessage(msg: ChatMessage, _width: number): string[] {
   const lines: string[] = [];
   const time = formatTime(msg.timestamp);
-  const reset = "\x1b[0m";
-  const divider = `\x1b[38;2;58;53;48m${"─".repeat(_width)}${reset}`;
+  const divider = `${fg(COLORS.border)}${"─".repeat(_width)}${RST}`;
   const contentWidth = _width - 6; // account for indent + padding
 
   switch (msg.role) {
     case "user":
       lines.push(divider);
-      lines.push(`  \x1b[1;38;2;122;162;212m> you${reset} \x1b[38;2;107;101;96m${time}${reset}`);
+      lines.push(`  \x1b[1m${fg(COLORS.info)}> you${RST} ${fg(COLORS.dimmed)}${time}${RST}`);
       for (const line of msg.content.split("\n")) {
         for (const wrapped of wrapLine(`    ${line}`, contentWidth, "    ")) {
           lines.push(wrapped);
@@ -126,7 +135,7 @@ function renderMessage(msg: ChatMessage, _width: number): string[] {
     case "assistant": {
       lines.push(divider);
       const thinking = msg.isStreaming && !msg.content;
-      lines.push(`  \x1b[1;38;2;232;184;122m> rue${reset} \x1b[38;2;107;101;96m${time}${reset}${thinking ? " \x1b[38;2;232;184;122m⠋\x1b[0m" : ""}`);
+      lines.push(`  \x1b[1m${fg(COLORS.primary)}> rue${RST} ${fg(COLORS.dimmed)}${time}${RST}${thinking ? ` ${fg(COLORS.primary)}⠋${RST}` : ""}`);
       if (msg.content) {
         const rendered = renderMarkdown(msg.content, contentWidth);
         for (const line of rendered.split("\n")) {
@@ -140,7 +149,7 @@ function renderMessage(msg: ChatMessage, _width: number): string[] {
 
     case "system":
       lines.push("");
-      for (const wrapped of wrapLine(`  \x1b[3;38;2;107;101;96m~ ${msg.content}\x1b[0m`, contentWidth, "    ")) {
+      for (const wrapped of wrapLine(`  \x1b[3m${fg(COLORS.dimmed)}~ ${msg.content}${RST}`, contentWidth, "    ")) {
         lines.push(wrapped);
       }
       break;
