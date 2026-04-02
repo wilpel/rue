@@ -1,10 +1,12 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { Box, Text, useApp, useInput, useStdout } from "ink";
 import { MessageList } from "./MessageList.js";
 import { InputBar } from "./InputBar.js";
 import { StatusBar } from "./StatusBar.js";
 import { Sidebar, type EventEntry, type TaskInfo } from "./Sidebar.js";
+import { LoadingScreen } from "./LoadingScreen.js";
 import { DaemonClient } from "../client.js";
+import { COLORS, LAYOUT } from "./theme.js";
 
 export interface AgentActivity {
   id: string;
@@ -38,15 +40,35 @@ export function App({ client }: AppProps) {
   const [usageHistory, setUsageHistory] = useState<Array<{ tokens: number; timestamp: number }>>([]);
   const [, setTokensSinceLastSample] = useState(0);
   const [totalTokens, setTotalTokens] = useState(0);
+  const [connectionState, setConnectionState] = useState<"connected" | "reconnecting" | "disconnected">("connected");
+  const [initialLoading, setInitialLoading] = useState(true);
 
-  // Sample token usage every 5 seconds — adds a new bar to the graph
+  const agentTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+
+  // Clean up agent timers on unmount
+  useEffect(() => {
+    return () => {
+      for (const timer of agentTimersRef.current.values()) clearTimeout(timer);
+      agentTimersRef.current.clear();
+    };
+  }, []);
+
+  // Track connection state
+  useEffect(() => {
+    const unsubReconnecting = client.onReconnecting(() => setConnectionState("reconnecting"));
+    const unsubReconnected = client.onReconnected(() => setConnectionState("connected"));
+    const unsubDisconnected = client.onDisconnected(() => setConnectionState("disconnected"));
+    return () => { unsubReconnecting(); unsubReconnected(); unsubDisconnected(); };
+  }, [client]);
+
+  // Sample token usage — adds a new bar to the graph
   useEffect(() => {
     const timer = setInterval(() => {
       setTokensSinceLastSample((current) => {
-        setUsageHistory((prev) => [...prev.slice(-100), { tokens: current, timestamp: Date.now() }]);
+        setUsageHistory((prev) => [...prev.slice(-LAYOUT.usageHistoryMax), { tokens: current, timestamp: Date.now() }]);
         return 0;
       });
-    }, 5000);
+    }, LAYOUT.tokenSampleIntervalMs);
     return () => clearInterval(timer);
   }, []);
 
@@ -72,7 +94,7 @@ export function App({ client }: AppProps) {
           timestamp: m.timestamp,
         }));
       if (restored.length > 0) setMessages(restored);
-    }).catch(() => {});
+    }).catch(() => {}).finally(() => setInitialLoading(false));
   }, [client]);
 
   // Poll for active tasks + refresh on task events (skip while streaming)
@@ -84,7 +106,7 @@ export function App({ client }: AppProps) {
 
   useEffect(() => {
     fetchTasks();
-    const interval = setInterval(fetchTasks, 3_000);
+    const interval = setInterval(fetchTasks, LAYOUT.taskPollIntervalMs);
     return () => clearInterval(interval);
   }, [fetchTasks]);
 
@@ -100,7 +122,7 @@ export function App({ client }: AppProps) {
         }]);
       }
     });
-    return unsub;
+    return () => { unsub(); };
   }, [client]);
 
   // Subscribe to agent events
@@ -117,13 +139,13 @@ export function App({ client }: AppProps) {
       if (!channel.startsWith("message:") && !channel.startsWith("interface:")) {
         let summary = "";
         if (channel === "delegate:question") {
-          summary = `❓ ${data.question as string ?? ""}`;
+          summary = `? ${data.question as string ?? ""}`;
         } else if (channel === "delegate:answer") {
-          summary = `💬 ${data.answer as string ?? ""}`;
+          summary = `> ${data.answer as string ?? ""}`;
         } else {
           summary = data.task as string ?? data.result as string ?? data.error as string ?? data.reason as string ?? data.output as string ?? "";
         }
-        setEvents((prev) => [...prev.slice(-50), { channel, summary, timestamp: Date.now() }]);
+        setEvents((prev) => [...prev.slice(-LAYOUT.maxEvents), { channel, summary, timestamp: Date.now() }]);
       }
 
       switch (channel) {
@@ -151,9 +173,15 @@ export function App({ client }: AppProps) {
             const next = new Map(prev);
             const existing = next.get(id);
             if (existing) next.set(id, { ...existing, state: "completed" });
-            setTimeout(() => setAgents((p) => { const n = new Map(p); n.delete(id); return n; }), 3000);
             return next;
           });
+          const existingTimer = agentTimersRef.current.get(id);
+          if (existingTimer) clearTimeout(existingTimer);
+          const timer = setTimeout(() => {
+            setAgents((p) => { const n = new Map(p); n.delete(id); return n; });
+            agentTimersRef.current.delete(id);
+          }, LAYOUT.completedAgentLingerMs);
+          agentTimersRef.current.set(id, timer);
           break;
         }
         case "agent:failed":
@@ -164,15 +192,21 @@ export function App({ client }: AppProps) {
             const next = new Map(prev);
             const existing = next.get(id);
             if (existing) next.set(id, { ...existing, state });
-            setTimeout(() => setAgents((p) => { const n = new Map(p); n.delete(id); return n; }), 5000);
             return next;
           });
+          const existingTimer = agentTimersRef.current.get(id);
+          if (existingTimer) clearTimeout(existingTimer);
+          const timer = setTimeout(() => {
+            setAgents((p) => { const n = new Map(p); n.delete(id); return n; });
+            agentTimersRef.current.delete(id);
+          }, LAYOUT.failedAgentLingerMs);
+          agentTimersRef.current.set(id, timer);
           break;
         }
       }
     });
 
-    return unsub;
+    return () => { unsub(); };
   }, [client]);
 
   const handleSubmit = useCallback(async (text: string) => {
@@ -207,8 +241,8 @@ export function App({ client }: AppProps) {
           setMessages((prev) =>
             prev.map((m) => m.id === assistantId ? { ...m, content: m.content + chunk } : m),
           );
-          // Live estimate ~4 chars per token (exact count arrives in agent:completed)
-          const estimatedTokens = Math.ceil(chunk.length / 4);
+          // Live estimate ~3.5 chars per token (exact count arrives in agent:completed)
+          const estimatedTokens = Math.ceil(chunk.length / LAYOUT.charsPerToken);
           setTokensSinceLastSample((prev) => prev + estimatedTokens);
         },
       });
@@ -235,12 +269,9 @@ export function App({ client }: AppProps) {
   }, [client, isLoading, agents]);
 
   const activeAgents = Array.from(agents.values());
-  // Layout: top bar (1) + spacer (1) + input (3) + status (1) = 6, rest is messages + sidebar
-  const chromeHeight = 6;
-  const contentHeight = Math.max(8, termHeight - chromeHeight);
-  // Sidebar takes ~30% of width, min 28 chars, only if terminal is wide enough
-  const showSidebar = termWidth >= 90;
-  const sidebarWidth = showSidebar ? Math.max(28, Math.floor(termWidth * 0.3)) : 0;
+  const contentHeight = Math.max(LAYOUT.minContentHeight, termHeight - LAYOUT.chromeHeight);
+  const showSidebar = termWidth >= LAYOUT.sidebarBreakpoint;
+  const sidebarWidth = showSidebar ? Math.max(LAYOUT.minSidebarWidth, Math.floor(termWidth * LAYOUT.sidebarRatio)) : 0;
   const messageWidth = termWidth - sidebarWidth;
 
   return (
@@ -248,13 +279,15 @@ export function App({ client }: AppProps) {
       {/* Top bar */}
       <Box paddingX={2} justifyContent="space-between" width={termWidth}>
         <Box>
-          <Text color="#E8B87A" bold> .-.  </Text>
-          <Text color="#E8B87A" bold>rue</Text>
-          <Text color="#4A3F35"> | </Text>
-          <Text color="#6B6560">your ai daemon</Text>
+          <Text color={COLORS.primary} bold> .-.  </Text>
+          <Text color={COLORS.primary} bold>rue</Text>
+          <Text color={COLORS.veryDim}> | </Text>
+          <Text color={COLORS.dimmed}>your ai daemon</Text>
+          {connectionState === "reconnecting" && <Text color={COLORS.secondary}> reconnecting...</Text>}
+          {connectionState === "disconnected" && <Text color={COLORS.urgent}> disconnected</Text>}
         </Box>
         <Box>
-          <Text color="#6B6560">v0.1.0</Text>
+          <Text color={COLORS.dimmed}>v0.1.0</Text>
         </Box>
       </Box>
 
@@ -262,7 +295,11 @@ export function App({ client }: AppProps) {
       <Box flexDirection="row" height={contentHeight}>
         {/* Left: message area */}
         <Box flexDirection="column" width={messageWidth} height={contentHeight} overflow="hidden">
-          <MessageList messages={messages} height={contentHeight} width={messageWidth} isLoading={isLoading} />
+          {initialLoading ? (
+            <LoadingScreen height={contentHeight} width={messageWidth} />
+          ) : (
+            <MessageList messages={messages} height={contentHeight} width={messageWidth} isLoading={isLoading} />
+          )}
         </Box>
 
         {/* Right: sidebar with agents + events */}
@@ -289,6 +326,7 @@ export function App({ client }: AppProps) {
         isLoading={isLoading}
         totalCost={totalCost}
         width={termWidth}
+        connectionState={connectionState}
       />
     </Box>
   );
