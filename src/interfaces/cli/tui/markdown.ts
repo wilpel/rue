@@ -1,6 +1,7 @@
 import { Marked } from "marked";
 import { markedTerminal } from "marked-terminal";
 import chalk from "chalk";
+import { COLORS } from "./theme.js";
 
 let highlightFn: ((code: string, opts?: { language?: string }) => string) | null = null;
 try {
@@ -8,29 +9,38 @@ try {
   highlightFn = mod.highlight;
 } catch { /* syntax highlighting unavailable */ }
 
-const marked = new Marked();
+function createMarked(width: number): Marked {
+  const instance = new Marked();
+  instance.use(
+    markedTerminal({
+      codespan: (text: string) => chalk.hex(COLORS.primary).bgHex(COLORS.codeBg)(` ${text} `),
+      strong: (text: string) => chalk.hex(COLORS.strongText).bold(text),
+      em: (text: string) => chalk.hex(COLORS.emText).italic(text),
+      heading: (text: string) => "\n" + chalk.hex(COLORS.primary).bold(text),
+      blockquote: (text: string) => chalk.hex(COLORS.quoteText)(`  | ${text}`),
+      link: (href: string, _title: string, text: string) => `${text} ${chalk.hex(COLORS.secondary).underline(`(${href})`)}`,
+      list: (body: string) => "\n" + body,
+      listitem: (text: string) => {
+        const clean = text.replace(/^\s*[*\-\u2022]\s*/, "").trim();
+        return `  ${chalk.hex(COLORS.primary)("\u2022")} ${clean}\n`;
+      },
+      tab: 2,
+      width,
+      reflowText: true,
+      showSectionPrefix: false,
+    } as any), // marked-terminal types are incomplete
+  );
+  return instance;
+}
 
-marked.use(
-  markedTerminal({
-    codespan: (text: string) => chalk.hex("#E8B87A").bgHex("#2A2520")(` ${text} `),
-    strong: (text: string) => chalk.hex("#E8CDA0").bold(text),
-    em: (text: string) => chalk.hex("#C9B89A").italic(text),
-    heading: (text: string) => "\n" + chalk.hex("#E8B87A").bold(text),
-    blockquote: (text: string) => chalk.hex("#A89080")(`  │ ${text}`),
-    link: (href: string, _title: string, text: string) => `${text} ${chalk.hex("#D4956B").underline(`(${href})`)}`,
-    list: (body: string) => "\n" + body,
-    listitem: (text: string) => {
-      const clean = text.replace(/^\s*[*\-•]\s*/, "").trim();
-      return `  ${chalk.hex("#E8B87A")("•")} ${clean}\n`;
-    },
-    tab: 2,
-    width: 100,
-    reflowText: true,
-    showSectionPrefix: false,
-  } as any), // marked-terminal types are incomplete
-);
+let currentWidth = 100;
+let marked = createMarked(currentWidth);
 
-export function renderMarkdown(text: string): string {
+export function renderMarkdown(text: string, width?: number): string {
+  if (width && width !== currentWidth) {
+    currentWidth = width;
+    marked = createMarked(width);
+  }
   try {
     // Extract code blocks, replace with placeholders
     const codeBlocks: Array<{ lang: string; code: string }> = [];
@@ -47,7 +57,7 @@ export function renderMarkdown(text: string): string {
     }
 
     return rendered
-      .replace(/^(\s*)\*\s+(•)/gm, "$1$2")
+      .replace(/^(\s*)\*\s+(\u2022)/gm, "$1$2")
       .replace(/\n{3,}/g, "\n\n")
       .trim();
   } catch {
@@ -61,10 +71,10 @@ function renderCodeInline(lang: string, code: string): string {
     try {
       highlighted = highlightFn(code, { language: lang });
     } catch {
-      highlighted = chalk.hex("#C9A87C")(code);
+      highlighted = chalk.hex(COLORS.codeText)(code);
     }
   } else {
-    highlighted = chalk.hex("#C9A87C")(code);
+    highlighted = chalk.hex(COLORS.codeText)(code);
   }
 
   return "\n" + highlighted + "\n";

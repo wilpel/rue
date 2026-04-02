@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect } from "react";
 import { Box, Text, useInput } from "ink";
-import { RueSpinner } from "./RueSpinner.js";
 import { renderMarkdown } from "./markdown.js";
+import { COLORS } from "./theme.js";
 import type { ChatMessage } from "./App.js";
 
 interface MessageListProps {
@@ -56,12 +56,7 @@ export function MessageList({ messages, height, width, isLoading }: MessageListP
   if (messages.length === 0) {
     return (
       <Box flexDirection="column" alignItems="center" justifyContent="center" height={height} width={width}>
-        <RueSpinner mode="block" />
-        <Box marginTop={1}>
-          <Text color="#E8B87A" bold>rue</Text>
-          <Text color="#A89080"> v0.1.0</Text>
-        </Box>
-        <Text color="#6B6560">Type a message to start, or /help for commands</Text>
+        <Text color={COLORS.dimmed}>Type a message to start, or /help for commands</Text>
       </Box>
     );
   }
@@ -80,8 +75,8 @@ export function MessageList({ messages, height, width, isLoading }: MessageListP
       </Box>
       {/* Scroll indicator */}
       {canScroll && !atBottom && (
-        <Box position="absolute" marginLeft={width - 4}>
-          <Text color="#4A3F35">↓</Text>
+        <Box justifyContent="flex-end" paddingRight={2}>
+          <Text color={COLORS.veryDim}>↓ more</Text>
         </Box>
       )}
     </Box>
@@ -114,7 +109,7 @@ function renderMessage(msg: ChatMessage, _width: number): string[] {
   const lines: string[] = [];
   const time = formatTime(msg.timestamp);
   const reset = "\x1b[0m";
-  const divider = `\x1b[38;2;38;34;32m${"─".repeat(_width)}${reset}`;
+  const divider = `\x1b[38;2;58;53;48m${"─".repeat(_width)}${reset}`;
   const contentWidth = _width - 6; // account for indent + padding
 
   switch (msg.role) {
@@ -133,7 +128,7 @@ function renderMessage(msg: ChatMessage, _width: number): string[] {
       const thinking = msg.isStreaming && !msg.content;
       lines.push(`  \x1b[1;38;2;232;184;122m> rue${reset} \x1b[38;2;107;101;96m${time}${reset}${thinking ? " \x1b[38;2;232;184;122m⠋\x1b[0m" : ""}`);
       if (msg.content) {
-        const rendered = renderMarkdown(msg.content);
+        const rendered = renderMarkdown(msg.content, contentWidth);
         for (const line of rendered.split("\n")) {
           for (const wrapped of wrapLine(`    ${line}`, contentWidth, "    ")) {
             lines.push(wrapped);
