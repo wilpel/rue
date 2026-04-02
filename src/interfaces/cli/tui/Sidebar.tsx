@@ -1,5 +1,7 @@
+import { useMemo } from "react";
 import { Box, Text } from "ink";
 import { RueSpinner } from "./RueSpinner.js";
+import { COLORS, LAYOUT } from "./theme.js";
 import type { AgentActivity } from "./App.js";
 
 export interface TaskInfo {
@@ -34,13 +36,13 @@ export interface EventEntry {
 }
 
 export function Sidebar({ agents, tasks, events, usageHistory, totalCost, totalTokens, height, width }: SidebarProps) {
-  const agentPanelHeight = Math.max(3, Math.floor(height * 0.2));
-  const taskPanelHeight = Math.max(3, Math.floor(height * 0.2));
-  const usagePanelHeight = Math.max(5, Math.floor(height * 0.25));
-  const eventPanelHeight = height - agentPanelHeight - taskPanelHeight - usagePanelHeight;
+  const agentPanelHeight = Math.max(LAYOUT.minPanelHeight, Math.floor(height * LAYOUT.agentPanelRatio));
+  const taskPanelHeight = Math.max(LAYOUT.minPanelHeight, Math.floor(height * LAYOUT.taskPanelRatio));
+  const usagePanelHeight = Math.max(LAYOUT.minUsagePanelHeight, Math.floor(height * LAYOUT.usagePanelRatio));
+  const eventPanelHeight = Math.max(LAYOUT.minPanelHeight, height - agentPanelHeight - taskPanelHeight - usagePanelHeight);
 
   return (
-    <Box flexDirection="column" width={width} height={height} borderStyle="single" borderColor="#3A3530" borderLeft borderTop={false} borderBottom={false} borderRight={false}>
+    <Box flexDirection="column" width={width} height={height} borderStyle="single" borderColor={COLORS.border} borderLeft borderTop={false} borderBottom={false} borderRight={false}>
       <AgentsPanel agents={agents} height={agentPanelHeight} width={width} />
       <TasksPanel tasks={tasks} height={taskPanelHeight} width={width} />
       <UsagePanel history={usageHistory} totalCost={totalCost} totalTokens={totalTokens} height={usagePanelHeight} width={width} />
@@ -49,27 +51,39 @@ export function Sidebar({ agents, tasks, events, usageHistory, totalCost, totalT
   );
 }
 
+function PanelHeader({ label, count, countColor }: { label: string; countColor?: string; count?: number }) {
+  return (
+    <>
+      <Box>
+        <Text color={COLORS.primary} bold> {label} </Text>
+        {count !== undefined && count > 0 && <Text color={countColor ?? COLORS.dimmed}>({count})</Text>}
+      </Box>
+      <Box borderStyle="single" borderColor={COLORS.border} borderTop borderBottom={false} borderLeft={false} borderRight={false}>
+        <Text> </Text>
+      </Box>
+    </>
+  );
+}
+
 function AgentsPanel({ agents, height, width }: { agents: AgentActivity[]; height: number; width: number }) {
   const activeAgents = agents.filter(a => a.state === "spawned" || a.state === "running");
-  const recentDone = agents.filter(a => a.state === "completed" || a.state === "failed" || a.state === "killed").slice(-3);
-  const allVisible = [...activeAgents, ...recentDone].slice(0, height - 2);
+  const recentDone = agents.filter(a => a.state === "completed" || a.state === "failed" || a.state === "killed").slice(-LAYOUT.minPanelHeight);
+  const maxVisible = height - 2;
+  const all = [...activeAgents, ...recentDone];
+  const visible = all.slice(0, maxVisible);
+  const overflow = all.length - visible.length;
 
   return (
     <Box flexDirection="column" height={height} paddingX={1} overflow="hidden">
-      <Box>
-        <Text color="#E8B87A" bold> Agents </Text>
-        {activeAgents.length > 0 && <Text color="#D4956B">({activeAgents.length})</Text>}
-      </Box>
-      <Box borderStyle="single" borderColor="#3A3530" borderTop borderBottom={false} borderLeft={false} borderRight={false}>
-        <Text> </Text>
-      </Box>
-      {allVisible.length === 0 ? (
-        <Box paddingLeft={1}><Text color="#4A3F35">no agents</Text></Box>
+      <PanelHeader label="Agents" count={activeAgents.length} countColor={COLORS.secondary} />
+      {visible.length === 0 ? (
+        <Box paddingLeft={1}><Text color={COLORS.veryDim}>no agents</Text></Box>
       ) : (
         <Box flexDirection="column">
-          {allVisible.map((agent) => (
+          {visible.map((agent) => (
             <SidebarAgentRow key={agent.id} agent={agent} maxWidth={width - 4} />
           ))}
+          {overflow > 0 && <Box paddingLeft={1}><Text color={COLORS.veryDim}>+{overflow} more</Text></Box>}
         </Box>
       )}
     </Box>
@@ -79,40 +93,37 @@ function AgentsPanel({ agents, height, width }: { agents: AgentActivity[]; heigh
 function SidebarAgentRow({ agent, maxWidth }: { agent: AgentActivity; maxWidth: number }) {
   const isActive = agent.state === "spawned" || agent.state === "running";
   const isMain = agent.lane === "main";
-  const activeColor = isMain ? "#8BA87A" : "#D4956B";
-  const color = isActive ? activeColor : agent.state === "completed" ? "#6B6560" : "#C47070";
+  const activeColor = isMain ? COLORS.success : COLORS.secondary;
+  const color = isActive ? activeColor : agent.state === "completed" ? COLORS.dimmed : COLORS.urgent;
   const icon = isActive ? "" : agent.state === "completed" ? "+" : "x";
   const elapsed = formatElapsed(Date.now() - agent.startedAt);
 
   return (
     <Box paddingLeft={1} width={maxWidth}>
       <Text color={color}>{isActive ? <RueSpinner /> : icon} </Text>
-      <Text color={isMain ? "#8BA87A" : "#6B6560"} wrap="truncate">{agent.task} </Text>
-      <Text color="#4A3F35">{elapsed}</Text>
+      <Text color={isMain ? COLORS.success : COLORS.dimmed} wrap="truncate">{agent.task} </Text>
+      <Text color={COLORS.veryDim}>{elapsed}</Text>
     </Box>
   );
 }
 
 function TasksPanel({ tasks, height, width }: { tasks: TaskInfo[]; height: number; width: number }) {
-  const visible = tasks.slice(0, height - 2);
+  const maxVisible = height - 2;
+  const visible = tasks.slice(0, maxVisible);
+  const overflow = tasks.length - visible.length;
   const contentWidth = width - 4;
 
   return (
     <Box flexDirection="column" height={height} paddingX={1} overflow="hidden">
-      <Box>
-        <Text color="#E8B87A" bold> Tasks </Text>
-        {tasks.length > 0 && <Text color="#7AA2D4">({tasks.length})</Text>}
-      </Box>
-      <Box borderStyle="single" borderColor="#3A3530" borderTop borderBottom={false} borderLeft={false} borderRight={false}>
-        <Text> </Text>
-      </Box>
+      <PanelHeader label="Tasks" count={tasks.length} countColor={COLORS.info} />
       {visible.length === 0 ? (
-        <Box paddingLeft={1}><Text color="#4A3F35">no tasks</Text></Box>
+        <Box paddingLeft={1}><Text color={COLORS.veryDim}>no tasks</Text></Box>
       ) : (
         <Box flexDirection="column">
           {visible.map((task) => (
             <TaskRow key={task.id} task={task} maxWidth={contentWidth} />
           ))}
+          {overflow > 0 && <Box paddingLeft={1}><Text color={COLORS.veryDim}>+{overflow} more</Text></Box>}
         </Box>
       )}
     </Box>
@@ -121,14 +132,17 @@ function TasksPanel({ tasks, height, width }: { tasks: TaskInfo[]; height: numbe
 
 function TaskRow({ task, maxWidth }: { task: TaskInfo; maxWidth: number }) {
   const typeIcon = task.type === "scheduled" ? "[S]" : task.type === "reminder" ? "[R]" : "[W]";
-  const priorityColor = task.priority === "urgent" ? "#C47070" : task.priority === "high" ? "#D4956B" : task.priority === "normal" ? "#6B6560" : "#4A3F35";
+  const priorityColor = task.priority === "urgent" ? COLORS.urgent
+    : task.priority === "high" ? COLORS.secondary
+    : task.priority === "normal" ? COLORS.dimmed
+    : COLORS.veryDim;
   const dueStr = task.due_at ? formatRelativeTime(task.due_at) : "";
 
   return (
     <Box paddingLeft={1} width={maxWidth}>
-      <Text color="#7AA2D4">{typeIcon} </Text>
+      <Text color={COLORS.info}>{typeIcon} </Text>
       <Text color={priorityColor} wrap="truncate">{task.title} </Text>
-      {dueStr ? <Text color="#4A3F35">{dueStr}</Text> : null}
+      {dueStr ? <Text color={COLORS.veryDim}>{dueStr}</Text> : null}
     </Box>
   );
 }
@@ -137,28 +151,31 @@ function UsagePanel({ history, totalCost, totalTokens, height, width }: { histor
   const graphWidth = width - 4;
   const graphHeight = height - 3;
 
-  // Take last graphWidth points, pad left with zeros — newest on right, scrolls left
-  const raw = history.slice(-graphWidth);
-  const padCount = Math.max(0, graphWidth - raw.length);
-  const values = [...Array(padCount).fill(0), ...raw.map(p => p.tokens)];
+  const rows = useMemo(() => {
+    // Take last graphWidth points, pad left with zeros — newest on right, scrolls left
+    const raw = history.slice(-graphWidth);
+    const padCount = Math.max(0, graphWidth - raw.length);
+    const values = [...Array(padCount).fill(0), ...raw.map(p => p.tokens)];
 
-  // Use all-time max so bars never rescale — only grows
-  const allTimeMax = Math.max(...history.map(p => p.tokens), 1);
-  const normalized = values.map(v => (v / allTimeMax) * graphHeight);
+    // Use all-time max so bars never rescale — only grows
+    const allTimeMax = Math.max(...history.map(p => p.tokens), 1);
+    const normalized = values.map(v => (v / allTimeMax) * graphHeight);
 
-  const rows: string[] = [];
-  for (let row = graphHeight - 1; row >= 0; row--) {
-    let line = "";
-    for (let col = 0; col < graphWidth; col++) {
-      const val = normalized[col];
-      if (val > row + 0.75) line += "█";
-      else if (val > row + 0.5) line += "▓";
-      else if (val > row + 0.25) line += "▒";
-      else if (val > row) line += "░";
-      else line += " ";
+    const result: string[] = [];
+    for (let row = graphHeight - 1; row >= 0; row--) {
+      let line = "";
+      for (let col = 0; col < graphWidth; col++) {
+        const val = normalized[col];
+        if (val > row + 0.75) line += "█";
+        else if (val > row + 0.5) line += "▓";
+        else if (val > row + 0.25) line += "▒";
+        else if (val > row) line += "░";
+        else line += " ";
+      }
+      result.push(line);
     }
-    rows.push(line);
-  }
+    return result;
+  }, [history, graphWidth, graphHeight]);
 
   const formatTokens = (n: number) => n >= 1000 ? `${(n / 1000).toFixed(1)}k` : `${n}`;
 
@@ -166,20 +183,20 @@ function UsagePanel({ history, totalCost, totalTokens, height, width }: { histor
     <Box flexDirection="column" height={height} paddingX={1} overflow="hidden">
       <Box justifyContent="space-between" width={width - 3}>
         <Box>
-          <Text color="#E8B87A" bold> Tokens </Text>
-          <Text color="#6B6560">{formatTokens(totalTokens)}</Text>
+          <Text color={COLORS.primary} bold> Tokens </Text>
+          <Text color={COLORS.dimmed}>{formatTokens(totalTokens)}</Text>
         </Box>
-        <Text color="#4A3F35">${totalCost.toFixed(2)}</Text>
+        <Text color={COLORS.veryDim}>${totalCost.toFixed(2)}</Text>
       </Box>
-      <Box borderStyle="single" borderColor="#3A3530" borderTop borderBottom={false} borderLeft={false} borderRight={false}>
+      <Box borderStyle="single" borderColor={COLORS.border} borderTop borderBottom={false} borderLeft={false} borderRight={false}>
         <Text> </Text>
       </Box>
       {totalTokens === 0 ? (
-        <Box paddingLeft={1}><Text color="#4A3F35">no usage yet</Text></Box>
+        <Box paddingLeft={1}><Text color={COLORS.veryDim}>no usage yet</Text></Box>
       ) : (
         <Box flexDirection="column">
           {rows.map((row, i) => (
-            <Text key={i} color="#D4956B">{row}</Text>
+            <Text key={i} color={COLORS.secondary}>{row}</Text>
           ))}
         </Box>
       )}
@@ -190,24 +207,22 @@ function UsagePanel({ history, totalCost, totalTokens, height, width }: { histor
 function EventsPanel({ events, height, width }: { events: EventEntry[]; height: number; width: number }) {
   // Each event takes ~2 lines (header + summary), so show half of available lines
   const maxEvents = Math.max(1, Math.floor((height - 2) / 2));
-  const reversed = [...events].reverse().slice(0, maxEvents);
+  const totalEvents = events.length;
+  const reversed = [...events].reverse().slice(0, Math.min(maxEvents, LAYOUT.maxEvents));
+  const overflow = totalEvents - reversed.length;
   const contentWidth = width - 4;
 
   return (
     <Box flexDirection="column" height={height} paddingX={1} overflow="hidden">
-      <Box>
-        <Text color="#E8B87A" bold> Events </Text>
-      </Box>
-      <Box borderStyle="single" borderColor="#3A3530" borderTop borderBottom={false} borderLeft={false} borderRight={false}>
-        <Text> </Text>
-      </Box>
+      <PanelHeader label="Events" />
       {reversed.length === 0 ? (
-        <Box paddingLeft={1}><Text color="#4A3F35">no events</Text></Box>
+        <Box paddingLeft={1}><Text color={COLORS.veryDim}>no events</Text></Box>
       ) : (
         <Box flexDirection="column" overflow="hidden">
           {reversed.map((evt, i) => (
             <EventRow key={`${evt.timestamp}-${i}`} event={evt} maxWidth={contentWidth} />
           ))}
+          {overflow > 0 && <Box paddingLeft={1}><Text color={COLORS.veryDim}>+{overflow} more</Text></Box>}
         </Box>
       )}
     </Box>
@@ -218,18 +233,18 @@ function EventRow({ event, maxWidth }: { event: EventEntry; maxWidth: number }) 
   const time = formatTime(event.timestamp);
   const tag = event.channel.split(":").pop() ?? event.channel;
 
-  const channelColor = event.channel === "delegate:question" ? "#7AA2D4"
-    : event.channel === "delegate:answer" ? "#8BA87A"
-    : event.channel.startsWith("agent:") ? "#D4956B"
-    : event.channel.startsWith("system:") ? "#8BA87A"
-    : event.channel.startsWith("task:") ? "#7AA2D4"
-    : "#6B6560";
+  const channelColor = event.channel === "delegate:question" ? COLORS.info
+    : event.channel === "delegate:answer" ? COLORS.success
+    : event.channel.startsWith("agent:") ? COLORS.secondary
+    : event.channel.startsWith("system:") ? COLORS.success
+    : event.channel.startsWith("task:") ? COLORS.info
+    : COLORS.dimmed;
 
   return (
     <Box paddingLeft={1} width={maxWidth}>
-      <Text color="#4A3F35">{time} </Text>
+      <Text color={COLORS.veryDim}>{time} </Text>
       <Text color={channelColor} bold>{tag} </Text>
-      {event.summary ? <Text color="#6B6560" wrap="truncate">{event.summary.slice(0, maxWidth - 18)}</Text> : null}
+      {event.summary ? <Text color={COLORS.dimmed} wrap="truncate">{event.summary.slice(0, maxWidth - 18)}</Text> : null}
     </Box>
   );
 }
