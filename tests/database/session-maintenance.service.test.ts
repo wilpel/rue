@@ -57,40 +57,39 @@ describe("SessionMaintenanceService", () => {
     return svc;
   }
 
-  it("prunes messages older than TTL", () => {
+  it("prunes messages older than TTL", async () => {
     const raw = dbService.getDb();
     insertMessage(raw, { createdAt: daysAgo(31) }); // old — should be deleted
     insertMessage(raw, { createdAt: daysAgo(29) }); // recent — should survive
 
-    const result = makeSvc({ messageTtlDays: 30 }).run();
+    const result = await makeSvc({ messageTtlDays: 30 }).run();
 
     expect(result.deletedMessages).toBe(1);
     const remaining = raw.prepare("SELECT COUNT(*) as cnt FROM messages").get() as { cnt: number };
     expect(remaining.cnt).toBe(1);
   });
 
-  it("preserves new messages", () => {
+  it("preserves new messages", async () => {
     const raw = dbService.getDb();
     insertMessage(raw, { createdAt: now });
     insertMessage(raw, { createdAt: daysAgo(1) });
 
-    const result = makeSvc({ messageTtlDays: 30 }).run();
+    const result = await makeSvc({ messageTtlDays: 30 }).run();
 
     expect(result.deletedMessages).toBe(0);
     const remaining = raw.prepare("SELECT COUNT(*) as cnt FROM messages").get() as { cnt: number };
     expect(remaining.cnt).toBe(2);
   });
 
-  it("caps per-chat messages to maxMessagesPerChat keeping the most recent", () => {
+  it("caps per-chat messages to maxMessagesPerChat keeping the most recent", async () => {
     const raw = dbService.getDb();
     const total = 10;
     const max = 6;
-    // Insert 10 messages for chat 42, oldest first
     for (let i = 0; i < total; i++) {
       insertMessage(raw, { createdAt: now - (total - i) * 1000, chatId: 42 });
     }
 
-    const result = makeSvc({ maxMessagesPerChat: max }).run();
+    const result = await makeSvc({ maxMessagesPerChat: max }).run();
 
     expect(result.deletedMessages).toBe(total - max);
     const remaining = raw.prepare(
@@ -99,14 +98,13 @@ describe("SessionMaintenanceService", () => {
     expect(remaining.cnt).toBe(max);
   });
 
-  it("keeps the most recent messages when capping", () => {
+  it("keeps the most recent messages when capping", async () => {
     const raw = dbService.getDb();
-    // Insert 5 messages with distinct content ordered by age
     for (let i = 0; i < 5; i++) {
       insertMessage(raw, { createdAt: now - (5 - i) * 1000, chatId: 99, content: `msg-${i}` });
     }
 
-    makeSvc({ maxMessagesPerChat: 3 }).run();
+    await makeSvc({ maxMessagesPerChat: 3 }).run();
 
     const rows = raw.prepare(
       "SELECT content FROM messages WHERE json_extract(metadata, '$.chatId') = 99 ORDER BY created_at ASC",
@@ -114,43 +112,42 @@ describe("SessionMaintenanceService", () => {
     expect(rows.map(r => r.content)).toEqual(["msg-2", "msg-3", "msg-4"]);
   });
 
-  it("does not cap chats within the message limit", () => {
+  it("does not cap chats within the message limit", async () => {
     const raw = dbService.getDb();
     for (let i = 0; i < 3; i++) {
       insertMessage(raw, { createdAt: now - i * 1000, chatId: 7 });
     }
 
-    const result = makeSvc({ maxMessagesPerChat: 10 }).run();
+    const result = await makeSvc({ maxMessagesPerChat: 10 }).run();
 
     expect(result.deletedMessages).toBe(0);
   });
 
-  it("prunes events older than TTL", () => {
+  it("prunes events older than TTL", async () => {
     const raw = dbService.getDb();
     insertEvent(raw, { createdAt: daysAgo(31) }); // old
     insertEvent(raw, { createdAt: daysAgo(1) });  // recent
 
-    const result = makeSvc({ messageTtlDays: 30 }).run();
+    const result = await makeSvc({ messageTtlDays: 30 }).run();
 
     expect(result.deletedEvents).toBe(1);
     const remaining = raw.prepare("SELECT COUNT(*) as cnt FROM events").get() as { cnt: number };
     expect(remaining.cnt).toBe(1);
   });
 
-  it("returns zero counts when nothing to prune", () => {
-    const result = makeSvc().run();
+  it("returns zero counts when nothing to prune", async () => {
+    const result = await makeSvc().run();
     expect(result.deletedMessages).toBe(0);
     expect(result.deletedEvents).toBe(0);
   });
 
-  it("does not affect messages without a chatId when capping", () => {
+  it("does not affect messages without a chatId when capping", async () => {
     const raw = dbService.getDb();
-    // Messages without chatId should never be touched by capping logic
     for (let i = 0; i < 5; i++) {
       insertMessage(raw, { createdAt: now - i * 1000 }); // no chatId
     }
 
-    const result = makeSvc({ maxMessagesPerChat: 2 }).run();
+    const result = await makeSvc({ maxMessagesPerChat: 2 }).run();
 
     expect(result.deletedMessages).toBe(0);
   });

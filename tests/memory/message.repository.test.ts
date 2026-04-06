@@ -64,6 +64,48 @@ describe("MessageRepository", () => {
     expect(msgs[0].metadata?.tag).toBe("USER_TELEGRAM");
   });
 
+  describe("compactHistory", () => {
+    it("returns empty string for no messages", () => {
+      expect(repo.compactHistory()).toBe("");
+    });
+
+    it("returns all verbatim when under recentVerbatim threshold", () => {
+      repo.append({ role: "user", content: "hello" });
+      repo.append({ role: "assistant", content: "hi" });
+      const result = repo.compactHistory({ recentVerbatim: 5 });
+      expect(result).toBe("[USER] hello\n[AGENT_RUE] hi");
+      expect(result).not.toContain("compacted");
+    });
+
+    it("truncates older messages and keeps recent verbatim", () => {
+      for (let i = 0; i < 10; i++) {
+        repo.append({ role: "user", content: `message number ${i} ${"x".repeat(120)}`, metadata: { tag: "USER" } });
+      }
+      const result = repo.compactHistory({ limit: 10, recentVerbatim: 3 });
+      expect(result).toContain("--- Earlier (compacted) ---");
+      expect(result).toContain("--- Recent ---");
+      // Older messages should be truncated (100 chars + "...")
+      expect(result).toContain("...");
+      // Recent messages should be full length
+      const recentSection = result.split("--- Recent ---")[1];
+      expect(recentSection).toContain("x".repeat(120));
+    });
+
+    it("uses metadata tag when available", () => {
+      repo.append({ role: "channel", content: "test", metadata: { tag: "USER_TELEGRAM" } });
+      const result = repo.compactHistory();
+      expect(result).toContain("[USER_TELEGRAM]");
+    });
+
+    it("filters by chatId when specified", () => {
+      repo.append({ role: "channel", content: "chat1", metadata: { chatId: 100, tag: "USER" } });
+      repo.append({ role: "channel", content: "chat2", metadata: { chatId: 200, tag: "USER" } });
+      const result = repo.compactHistory({ chatId: 100 });
+      expect(result).toContain("chat1");
+      expect(result).not.toContain("chat2");
+    });
+  });
+
   it("recentByChatId filters by chatId at SQL level", () => {
     repo.append({ role: "channel" as any, content: "msg1", metadata: { chatId: 100, tag: "USER_TELEGRAM" } });
     repo.append({ role: "channel" as any, content: "msg2", metadata: { chatId: 200, tag: "USER_TELEGRAM" } });

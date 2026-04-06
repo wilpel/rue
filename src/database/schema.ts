@@ -15,6 +15,24 @@ export const facts = sqliteTable("facts", {
   tags: text("tags").notNull().default("[]"),
   createdAt: integer("created_at").notNull(),
   updatedAt: integer("updated_at").notNull(),
+  accessCount: integer("access_count").notNull().default(0),
+  lastAccessedAt: integer("last_accessed_at"),
+});
+
+export const consolidationLog = sqliteTable("consolidation_log", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  stage: text("stage").notNull(),
+  processedUpTo: integer("processed_up_to").notNull(),
+  result: text("result"),
+  createdAt: integer("created_at").notNull(),
+});
+
+export const triageTags = sqliteTable("triage_tags", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  messageId: text("message_id").notNull(),
+  tag: text("tag").notNull(),
+  extractedFact: text("extracted_fact"),
+  createdAt: integer("created_at").notNull(),
 });
 
 export const jobs = sqliteTable("jobs", {

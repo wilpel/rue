@@ -6,6 +6,8 @@ import { ClaudeProcessService } from "../agents/claude-process.service.js";
 import { BusService } from "../bus/bus.service.js";
 import { ChannelRegistry } from "./channel-registry.js";
 import { RouterService } from "../routing/router.service.js";
+import { ConfigService } from "../config/config.service.js";
+import { SessionMaintenanceService } from "../database/session-maintenance.service.js";
 import type { DebouncedBatch } from "./debounce.service.js";
 import type { InboundMessage } from "./channel-adapter.js";
 import { log } from "../shared/logger.js";
@@ -23,6 +25,8 @@ export class ChannelService implements OnModuleInit {
   private lastSessionId: string | undefined;
   private lastSessionTime = 0;
 
+  private readonly primaryModel: string;
+
   constructor(
     @Inject(MessageRepository) private readonly messages: MessageRepository,
     @Inject(AssemblerService) private readonly assembler: AssemblerService,
@@ -31,7 +35,11 @@ export class ChannelService implements OnModuleInit {
     @Inject(BusService) private readonly bus: BusService,
     @Inject(ChannelRegistry) private readonly registry: ChannelRegistry,
     @Inject(RouterService) private readonly router: RouterService,
-  ) {}
+    @Inject(ConfigService) config: ConfigService,
+    @Inject(SessionMaintenanceService) private readonly maintenance: SessionMaintenanceService,
+  ) {
+    this.primaryModel = config.models.primary;
+  }
 
   onModuleInit(): void {
     this.bus.on("delegate:result", ({ agentId, output, chatId }) => {
@@ -42,6 +50,7 @@ export class ChannelService implements OnModuleInit {
     });
 
     this.assembler.setDelegateService(this.delegate);
+    this.maintenance.setDelegateSpawner(this.delegate);
     log.info("[channel] Service initialized");
   }
 
@@ -85,18 +94,11 @@ export class ChannelService implements OnModuleInit {
 
   /**
    * Get last N messages from a chat, formatted as the conversation thread.
+   * Older messages are compacted (truncated) to save tokens.
    */
   getHistory(chatId: string, limit = 20): string {
-    const chatMessages = this.messages.recentByChatId(chatId, limit);
-    if (chatMessages.length === 0) return "(No conversation history)";
-    return chatMessages
-      .map((m) => {
-        const tag =
-          (m.metadata as Record<string, unknown>)?.tag ??
-          (m.role === "assistant" ? "AGENT_RUE" : "USER");
-        return `[${tag}] ${m.content}`;
-      })
-      .join("\n");
+    const result = this.messages.compactHistory({ limit, chatId });
+    return result || "(No conversation history)";
   }
 
   /**
@@ -226,6 +228,7 @@ export class ChannelService implements OnModuleInit {
       systemPrompt,
       timeout: 60_000,
       maxTurns: 4,
+      model: this.primaryModel,
       allowedTools: tools,
       resume: resumeSessionId,
     });

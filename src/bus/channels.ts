@@ -1,5 +1,7 @@
+import type { Signal } from "../memory/workspace.types.js";
+
 export interface BusChannels {
-  "agent:spawned": { id: string; task: string; lane: string };
+  "agent:spawned": { id: string; task: string; lane: string; model?: string; complexity?: string };
   "agent:progress": { id: string; chunk: string; tool?: string };
   "agent:completed": { id: string; result: string; cost: number; inputTokens?: number; outputTokens?: number };
   "agent:failed": { id: string; error: string; retryable: boolean };
@@ -20,6 +22,11 @@ export interface BusChannels {
   "message:created": { id: string; role: string; content: string; timestamp: number; sessionId?: string; metadata?: Record<string, unknown> };
   "agent:failover": { id: string; fromModel: string; toModel: string; reason: string };
   "system:maintenance": { deletedMessages: number; deletedEvents: number };
+  "system:heartbeat": Record<string, never>;
+  "system:triage": Record<string, never>;
+  "system:consolidation": Record<string, never>;
+  "system:synthesis": Record<string, never>;
+  "workspace:broadcast": { top: Signal[]; timestamp: number };
   "delegate:result": { agentId: string; output: string; chatId: string | number };
   "delegate:question": { agentId: string; question: string; chatId: string | number };
   "delegate:answer": { agentId: string; answer: string };

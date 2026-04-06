@@ -12,6 +12,7 @@ Use this for ANY task that requires tool use — web searches, file reading, cod
 node --import tsx/esm skills/delegate/run.ts spawn \
   --task "Search the web for ..." \
   --name "Web researcher" \
+  --complexity medium \
   --chat-id 12345 \
   --message-id 67890
 ```
@@ -20,6 +21,11 @@ node --import tsx/esm skills/delegate/run.ts spawn \
 
 - `--task` (required) — Full description of what the background agent should do. Be specific.
 - `--name` (optional) — Short display name for this agent (e.g., "Web researcher", "Code analyzer"). Shown in the UI.
+- `--complexity` (required) — Task complexity: `trivial`, `low`, `medium`, or `hard`. Controls which model is used.
+  - `trivial` — Formatting, status checks, simple classification → Haiku
+  - `low` — Simple lookups, formatting, quick searches → Sonnet
+  - `medium` — Research, analysis, moderate code tasks → Sonnet
+  - `hard` — Complex reasoning, architecture, multi-step coding → Opus
 - `--chat-id` (optional) — Telegram chat ID to send the result to. Omit for CLI — result is delivered back automatically.
 - `--message-id` (optional) — Message ID to reply to.
 

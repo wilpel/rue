@@ -43,14 +43,40 @@ describe("ConfigService", () => {
 
   it("has default models config", () => {
     const config = new ConfigService(path.join(tmpDir, "nonexistent.json"));
-    expect(config.models.primary).toBe("opus");
+    expect(config.models.primary).toBe("sonnet");
     expect(config.models.fallback).toEqual(["sonnet"]);
+    expect(config.models.delegate).toEqual({ trivial: "haiku", low: "sonnet", medium: "sonnet", hard: "opus" });
+  });
+
+  it("has default heartbeat config", () => {
+    const config = new ConfigService(path.join(tmpDir, "nonexistent.json"));
+    expect(config.heartbeat.enabled).toBe(true);
+    expect(config.heartbeat.intervalMs).toBe(1_800_000);
+  });
+
+  it("has default workspace config", () => {
+    const config = new ConfigService(path.join(tmpDir, "nonexistent.json"));
+    expect(config.workspace.enabled).toBe(true);
+    expect(config.workspace.tickMs).toBe(15_000);
+    expect(config.workspace.maxSignals).toBe(50);
+    expect(config.workspace.topN).toBe(5);
+  });
+
+  it("has default consolidation config", () => {
+    const config = new ConfigService(path.join(tmpDir, "nonexistent.json"));
+    expect(config.consolidation.triage.enabled).toBe(true);
+    expect(config.consolidation.triage.intervalMs).toBe(7_200_000);
+    expect(config.consolidation.consolidation.enabled).toBe(true);
+    expect(config.consolidation.consolidation.intervalMs).toBe(86_400_000);
+    expect(config.consolidation.synthesis.enabled).toBe(true);
+    expect(config.consolidation.synthesis.intervalMs).toBe(604_800_000);
   });
 
   it("has default sessions config", () => {
     const config = new ConfigService(path.join(tmpDir, "nonexistent.json"));
     expect(config.sessions.messageTtlDays).toBe(30);
     expect(config.sessions.maxMessagesPerChat).toBe(500);
+    expect(config.sessions.preCompactionSave).toBe(true);
   });
 
   it("has default debounce config", () => {

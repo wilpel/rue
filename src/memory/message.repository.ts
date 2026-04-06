@@ -61,6 +61,49 @@ export class MessageRepository {
     return result?.cnt ?? 0;
   }
 
+  /**
+   * Returns compacted history: older messages truncated, recent ones verbatim.
+   * No LLM call — pure extractive truncation.
+   */
+  compactHistory(opts?: { limit?: number; recentVerbatim?: number; chatId?: string | number }): string {
+    const limit = opts?.limit ?? 20;
+    const recentCount = opts?.recentVerbatim ?? 5;
+
+    const all = opts?.chatId
+      ? this.recentByChatId(opts.chatId, limit)
+      : this.recent(limit);
+
+    if (all.length === 0) return "";
+
+    const formatTag = (m: StoredMessage) =>
+      (m.metadata as Record<string, unknown>)?.tag as string
+        ?? (m.role === "assistant" ? "AGENT_RUE" : "USER");
+
+    // If within recent window, return all verbatim
+    if (all.length <= recentCount) {
+      return all.map(m => `[${formatTag(m)}] ${m.content}`).join("\n");
+    }
+
+    const older = all.slice(0, -recentCount);
+    const recent = all.slice(-recentCount);
+
+    // Truncate older messages to first 100 chars
+    const compacted = older.map(m => {
+      const tag = formatTag(m);
+      const short = m.content.length > 100 ? m.content.slice(0, 100) + "..." : m.content;
+      return `[${tag}] ${short}`;
+    });
+
+    const parts = [
+      "--- Earlier (compacted) ---",
+      ...compacted,
+      "--- Recent ---",
+      ...recent.map(m => `[${formatTag(m)}] ${m.content}`),
+    ];
+
+    return parts.join("\n");
+  }
+
   private toStoredMessage(row: typeof messages.$inferSelect): StoredMessage {
     return {
       id: row.id, role: row.role as MessageRole, content: row.content, createdAt: row.createdAt,

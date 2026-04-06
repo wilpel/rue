@@ -37,7 +37,7 @@ export class ClaudeProcess {
           permissionMode: "acceptEdits",
           maxTurns: this.config.maxTurns,
           maxBudgetUsd: this.config.budget,
-          model: this.config.model ?? "opus",
+          model: this.config.model ?? "sonnet",
           abortController: this.abortController,
           includePartialMessages: true,
           settingSources: [],
@@ -102,7 +102,7 @@ export class ClaudeProcess {
 
       this._isRunning = false;
       this._output = streamedText;
-      return { output: streamedText, exitCode: 0, cost, durationMs: Date.now() - startedAt, sessionId, numTurns, usage, model: this.config.model ?? "opus" };
+      return { output: streamedText, exitCode: 0, cost, durationMs: Date.now() - startedAt, sessionId, numTurns, usage, model: this.config.model ?? "sonnet" };
     } catch (error) {
       this._isRunning = false;
       const errMsg = error instanceof Error ? error.message : String(error);

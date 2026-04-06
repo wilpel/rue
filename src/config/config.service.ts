@@ -28,14 +28,50 @@ const ConfigSchema = z.object({
     })
     .default({ dailyCeiling: 10 }),
   models: z.object({
-    primary: z.string().default("opus"),
+    primary: z.string().default("sonnet"),
     fallback: z.array(z.string()).default(["sonnet"]),
-  }).default({ primary: "opus", fallback: ["sonnet"] }),
+    delegate: z.object({
+      trivial: z.string().default("haiku"),
+      low: z.string().default("sonnet"),
+      medium: z.string().default("sonnet"),
+      hard: z.string().default("opus"),
+    }).default({ trivial: "haiku", low: "sonnet", medium: "sonnet", hard: "opus" }),
+  }).default({ primary: "sonnet", fallback: ["sonnet"], delegate: { trivial: "haiku", low: "sonnet", medium: "sonnet", hard: "opus" } }),
+  heartbeat: z.object({
+    enabled: z.boolean().default(true),
+    intervalMs: z.number().int().min(60_000).default(1_800_000),
+  }).default({ enabled: true, intervalMs: 1_800_000 }),
+  workspace: z.object({
+    enabled: z.boolean().default(true),
+    tickMs: z.number().int().min(5000).default(15_000),
+    maxSignals: z.number().int().min(10).default(50),
+    topN: z.number().int().min(1).default(5),
+  }).default({ enabled: true, tickMs: 15_000, maxSignals: 50, topN: 5 }),
+  consolidation: z.object({
+    triage: z.object({
+      enabled: z.boolean().default(true),
+      intervalMs: z.number().int().min(1_800_000).default(7_200_000),
+      minNewMessages: z.number().int().min(1).default(3),
+    }).default({ enabled: true, intervalMs: 7_200_000, minNewMessages: 3 }),
+    consolidation: z.object({
+      enabled: z.boolean().default(true),
+      intervalMs: z.number().int().min(3_600_000).default(86_400_000),
+    }).default({ enabled: true, intervalMs: 86_400_000 }),
+    synthesis: z.object({
+      enabled: z.boolean().default(true),
+      intervalMs: z.number().int().min(86_400_000).default(604_800_000),
+    }).default({ enabled: true, intervalMs: 604_800_000 }),
+  }).default({
+    triage: { enabled: true, intervalMs: 7_200_000, minNewMessages: 3 },
+    consolidation: { enabled: true, intervalMs: 86_400_000 },
+    synthesis: { enabled: true, intervalMs: 604_800_000 },
+  }),
   sessions: z.object({
     messageTtlDays: z.number().int().min(1).default(30),
     maxMessagesPerChat: z.number().int().min(10).default(500),
     vacuumAfterCleanup: z.boolean().default(true),
-  }).default({ messageTtlDays: 30, maxMessagesPerChat: 500, vacuumAfterCleanup: true }),
+    preCompactionSave: z.boolean().default(true),
+  }).default({ messageTtlDays: 30, maxMessagesPerChat: 500, vacuumAfterCleanup: true, preCompactionSave: true }),
   debounce: z.object({
     textGapMs: z.number().int().min(100).default(2000),
     mediaGapMs: z.number().int().min(10).default(100),
@@ -77,6 +113,9 @@ export class ConfigService {
   get stall(): RueConfig["stall"] { return this.config.stall; }
   get budgets(): RueConfig["budgets"] { return this.config.budgets; }
   get models(): RueConfig["models"] { return this.config.models; }
+  get heartbeat(): RueConfig["heartbeat"] { return this.config.heartbeat; }
+  get workspace(): RueConfig["workspace"] { return this.config.workspace; }
+  get consolidation(): RueConfig["consolidation"] { return this.config.consolidation; }
   get sessions(): RueConfig["sessions"] { return this.config.sessions; }
   get debounce(): RueConfig["debounce"] { return this.config.debounce; }
   get routes(): RueConfig["routes"] { return this.config.routes; }

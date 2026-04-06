@@ -2,7 +2,7 @@ import { Injectable } from "@nestjs/common";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { SemanticRepository } from "./semantic.repository.js";
-import { WorkingMemoryService } from "./working-memory.service.js";
+import { WorkspaceService } from "./workspace.service.js";
 import { KnowledgeBaseService } from "./knowledge-base.service.js";
 import { IdentityService } from "../identity/identity.service.js";
 import { UserModelService } from "../identity/user-model.service.js";
@@ -25,7 +25,7 @@ export class AssemblerService {
 
   constructor(
     _semantic: SemanticRepository,
-    _working: WorkingMemoryService,
+    private readonly workspace: WorkspaceService,
     private readonly identity: IdentityService,
     private readonly userModel: UserModelService,
     _kb: KnowledgeBaseService,
@@ -42,6 +42,9 @@ export class AssemblerService {
       this.personalityCache = null;
       this.cachedPromptPaths = pathKey;
     }
+    // Section order matters for prompt caching: static content first, dynamic last.
+    // SDK auto-caches the prefix — any change in early sections invalidates cache for everything after.
+    // Order: system prompt (static) → personality (static) → skills (rare changes) → identity → delegates (every call)
     const sections: string[] = [];
     const systemPath = promptPaths?.systemPrompt ?? "prompts/SYSTEM.md";
     const personalityPath = promptPaths?.personality ?? "prompts/PERSONALITY.md";
@@ -74,6 +77,12 @@ export class AssemblerService {
     if (mode === "dispatcher" || mode === "worker") {
       if (this.skillsCache === null) this.skillsCache = this.discoverSkills() ?? "";
       if (this.skillsCache) sections.push(this.skillsCache);
+    }
+
+    // Workspace awareness: dispatcher and worker modes
+    if (mode === "dispatcher" || mode === "worker") {
+      const wsText = this.workspace.toPromptText();
+      if (wsText) sections.push(`## Current Awareness\n${wsText}`);
     }
 
     // Workers get identity + user model for personalization

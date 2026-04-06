@@ -1,7 +1,9 @@
 import { Module } from "@nestjs/common";
 import { MessageRepository } from "./message.repository.js";
 import { SemanticRepository } from "./semantic.repository.js";
-import { WorkingMemoryService } from "./working-memory.service.js";
+import { WorkspaceService } from "./workspace.service.js";
+import { WorkspaceIntegrationService } from "./workspace-integration.service.js";
+import { ActivationService } from "./activation.service.js";
 import { KnowledgeBaseService } from "./knowledge-base.service.js";
 import { AssemblerService } from "./assembler.service.js";
 import { SessionService } from "./session.service.js";
@@ -19,12 +21,14 @@ const PROJECT_ROOT = path.resolve(__dirname, "..", "..");
   imports: [IdentityModule],
   providers: [
     MessageRepository,
+    ActivationService,
     SemanticRepository,
-    WorkingMemoryService,
+    WorkspaceService,
+    WorkspaceIntegrationService,
     SessionService,
-    { provide: KnowledgeBaseService, useFactory: (config: ConfigService) => new KnowledgeBaseService(path.join(config.dataDir, "kb")), inject: [ConfigService] },
-    { provide: AssemblerService, useFactory: (semantic: SemanticRepository, working: WorkingMemoryService, identity: IdentityService, userModel: UserModelService, kb: KnowledgeBaseService) => new AssemblerService(semantic, working, identity, userModel, kb, PROJECT_ROOT), inject: [SemanticRepository, WorkingMemoryService, IdentityService, UserModelService, KnowledgeBaseService] },
+    { provide: KnowledgeBaseService, useFactory: (config: ConfigService, activation: ActivationService) => new KnowledgeBaseService(path.join(config.dataDir, "kb"), activation), inject: [ConfigService, ActivationService] },
+    { provide: AssemblerService, useFactory: (semantic: SemanticRepository, workspace: WorkspaceService, identity: IdentityService, userModel: UserModelService, kb: KnowledgeBaseService) => new AssemblerService(semantic, workspace, identity, userModel, kb, PROJECT_ROOT), inject: [SemanticRepository, WorkspaceService, IdentityService, UserModelService, KnowledgeBaseService] },
   ],
-  exports: [MessageRepository, SemanticRepository, WorkingMemoryService, KnowledgeBaseService, AssemblerService, SessionService],
+  exports: [MessageRepository, SemanticRepository, WorkspaceService, ActivationService, KnowledgeBaseService, AssemblerService, SessionService],
 })
 export class MemoryModule {}

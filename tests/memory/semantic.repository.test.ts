@@ -4,6 +4,7 @@ import * as path from "node:path";
 import * as os from "node:os";
 import { DatabaseService } from "../../src/database/database.service.js";
 import { SemanticRepository } from "../../src/memory/semantic.repository.js";
+import { ActivationService } from "../../src/memory/activation.service.js";
 
 describe("SemanticRepository", () => {
   let tmpDir: string;
@@ -13,7 +14,7 @@ describe("SemanticRepository", () => {
   beforeEach(() => {
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "rue-semantic-test-"));
     dbService = new DatabaseService(tmpDir);
-    repo = new SemanticRepository(dbService);
+    repo = new SemanticRepository(dbService, new ActivationService());
   });
 
   afterEach(() => {

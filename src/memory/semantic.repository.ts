@@ -1,14 +1,18 @@
 import { Injectable, Inject } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service.js";
+import { ActivationService } from "./activation.service.js";
 import { facts } from "../database/schema.js";
 import { eq } from "drizzle-orm";
 
-export interface Fact { key: string; content: string; tags: string[]; createdAt: number; updatedAt: number; }
+export interface Fact { key: string; content: string; tags: string[]; createdAt: number; updatedAt: number; accessCount: number; lastAccessedAt: number | null; }
 export interface SearchResult { key: string; content: string; tags: string[]; score: number; }
 
 @Injectable()
 export class SemanticRepository {
-  constructor(@Inject(DatabaseService) private readonly db: DatabaseService) {}
+  constructor(
+    @Inject(DatabaseService) private readonly db: DatabaseService,
+    @Inject(ActivationService) private readonly activation: ActivationService,
+  ) {}
 
   store(key: string, content: string, tags: string[]): void {
     const now = Date.now();
@@ -23,7 +27,7 @@ export class SemanticRepository {
   get(key: string): Fact | null {
     const row = this.db.getDrizzle().select().from(facts).where(eq(facts.key, key)).get();
     if (!row) return null;
-    return { key: row.key, content: row.content, tags: JSON.parse(row.tags), createdAt: row.createdAt, updatedAt: row.updatedAt };
+    return { key: row.key, content: row.content, tags: JSON.parse(row.tags), createdAt: row.createdAt, updatedAt: row.updatedAt, accessCount: row.accessCount, lastAccessedAt: row.lastAccessedAt };
   }
 
   delete(key: string): void {
@@ -34,22 +38,41 @@ export class SemanticRepository {
     const words = query.toLowerCase().split(/\s+/).filter(w => w.length > 2);
     if (words.length === 0) return [];
     const rows = this.db.getDrizzle().select().from(facts).all();
-    return rows
+    const results = rows
       .map(row => {
         const lower = row.content.toLowerCase();
         const tagStr = row.tags.toLowerCase();
-        let score = 0;
-        for (const word of words) { if (lower.includes(word)) score += 1; if (tagStr.includes(word)) score += 0.5; }
-        return { key: row.key, content: row.content, tags: JSON.parse(row.tags), score };
+        let contentScore = 0;
+        for (const word of words) { if (lower.includes(word)) contentScore += 1; if (tagStr.includes(word)) contentScore += 0.5; }
+        if (contentScore === 0) return null;
+        const tags = JSON.parse(row.tags) as string[];
+        const { total } = this.activation.computeActivation({
+          accessCount: row.accessCount,
+          lastAccessedAt: row.lastAccessedAt,
+          contentScore,
+          tags,
+        });
+        return { key: row.key, content: row.content, tags, score: total };
       })
-      .filter(r => r.score > 0)
+      .filter((r): r is SearchResult => r !== null)
       .sort((a, b) => b.score - a.score)
       .slice(0, limit);
+
+    // Record access for returned results
+    for (const r of results) this.recordAccess(r.key);
+
+    return results;
+  }
+
+  recordAccess(key: string): void {
+    this.db.getDb().prepare(
+      "UPDATE facts SET access_count = access_count + 1, last_accessed_at = ? WHERE key = ?",
+    ).run(Date.now(), key);
   }
 
   listAll(): Fact[] {
     const rows = this.db.getDrizzle().select().from(facts).all();
-    return rows.map(row => ({ key: row.key, content: row.content, tags: JSON.parse(row.tags), createdAt: row.createdAt, updatedAt: row.updatedAt }));
+    return rows.map(row => ({ key: row.key, content: row.content, tags: JSON.parse(row.tags), createdAt: row.createdAt, updatedAt: row.updatedAt, accessCount: row.accessCount, lastAccessedAt: row.lastAccessedAt }));
   }
 
   toPromptText(query?: string, maxFacts = 20): string {

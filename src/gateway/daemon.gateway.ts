@@ -81,11 +81,7 @@ export class DaemonGateway implements OnGatewayConnection, OnGatewayDisconnect, 
         this.messages.append({ role: "channel", content: payload.output, metadata: { tag: `AGENT_DELEGATE_${payload.agentId}` } });
 
         // Re-run the main agent with the delegate result as context
-        const recentMessages = this.messages.recent(20);
-        const history = recentMessages.map(m => {
-          const tag = (m.metadata as Record<string, unknown>)?.tag ?? (m.role === "assistant" ? "AGENT_RUE" : "USER");
-          return `[${tag}] ${m.content}`;
-        }).join("\n");
+        const history = this.messages.compactHistory();
 
         const systemPrompt = this.assembler.assemble("", undefined, "followup");
         const prompt = `A background delegate agent just completed and posted its result to your conversation.\n\nHere is the recent conversation:\n\n${history}\n\n---\nRespond to the user with the delegate's result. Summarize or format it as appropriate.`;
@@ -146,11 +142,7 @@ export class DaemonGateway implements OnGatewayConnection, OnGatewayDisconnect, 
 
         this.messages.append({ role: "channel", content: `[Question from delegate ${payload.agentId}]: ${payload.question}`, metadata: { tag: "DELEGATE_QUESTION" } });
 
-        const recentMessages = this.messages.recent(20);
-        const history = recentMessages.map(m => {
-          const tag = (m.metadata as Record<string, unknown>)?.tag ?? (m.role === "assistant" ? "AGENT_RUE" : "USER");
-          return `[${tag}] ${m.content}`;
-        }).join("\n");
+        const history = this.messages.compactHistory();
 
         const systemPrompt = this.assembler.assemble("", undefined, "followup");
         const prompt = `A background delegate agent (${payload.agentId}) has paused and is asking you a question:\n\n"${payload.question}"\n\nHere is the recent conversation for context:\n\n${history}\n\n---\nAnswer the delegate's question. Your response will be sent directly back to the delegate agent so it can continue its work. Be concise and direct.`;
@@ -200,11 +192,7 @@ export class DaemonGateway implements OnGatewayConnection, OnGatewayDisconnect, 
         if (ws.readyState !== ws.OPEN) return;
         if (payload.status !== "triggered") return;
 
-        const recentMessages = this.messages.recent(20);
-        const history = recentMessages.map(m => {
-          const tag = (m.metadata as Record<string, unknown>)?.tag ?? (m.role === "assistant" ? "AGENT_RUE" : "USER");
-          return `[${tag}] ${m.content}`;
-        }).join("\n");
+        const history = this.messages.compactHistory();
 
         const systemPrompt = this.assembler.assemble("", undefined, "dispatcher");
         const prompt = `A scheduled event just triggered. Here is the recent conversation including the event:\n\n${history}\n\n---\nRespond to the scheduled event. If it requires action, delegate it. If it's a reminder, inform the user.`;

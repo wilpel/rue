@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { DelegateService } from "../../src/agents/delegate.service.js";
 import { ClaudeProcessService } from "../../src/agents/claude-process.service.js";
 import { HealthService } from "../../src/agents/health.service.js";
+import { ConfigService } from "../../src/config/config.service.js";
 import { BusService } from "../../src/bus/bus.service.js";
 
 describe("DelegateService", () => {
@@ -9,10 +10,12 @@ describe("DelegateService", () => {
   let mockHealth: HealthService;
   let bus: BusService;
   let mockProcessService: ClaudeProcessService;
+  let mockConfig: ConfigService;
 
   beforeEach(() => {
     bus = new BusService();
     mockHealth = { trackAgent: vi.fn(), untrackAgent: vi.fn(), updateLastOutput: vi.fn(), start: vi.fn(), stop: vi.fn(), onModuleDestroy: vi.fn() } as unknown as HealthService;
+    mockConfig = { models: { primary: "sonnet", fallback: ["sonnet"], delegate: { trivial: "haiku", low: "sonnet", medium: "sonnet", hard: "opus" } } } as unknown as ConfigService;
 
     const mockProcess = {
       run: vi.fn().mockResolvedValue({ output: "Search results here", exitCode: 0, cost: 0.05, durationMs: 5000 }),
@@ -22,7 +25,7 @@ describe("DelegateService", () => {
     };
     mockProcessService = { createProcess: vi.fn().mockReturnValue(mockProcess) } as unknown as ClaudeProcessService;
 
-    delegate = new DelegateService(mockProcessService, bus, mockHealth);
+    delegate = new DelegateService(mockProcessService, bus, mockHealth, mockConfig);
   });
 
   describe("retry policy", () => {
@@ -148,6 +151,43 @@ describe("DelegateService", () => {
       agentId: expect.stringContaining("delegate-"),
       output: "Failed: SDK crashed",
       chatId: 123,
+    });
+  });
+
+  describe("complexity-based model selection", () => {
+    it("uses haiku for trivial complexity", async () => {
+      await delegate.spawn("Format this", 123, undefined, { complexity: "trivial" });
+      expect(mockProcessService.createProcess).toHaveBeenCalledWith(
+        expect.objectContaining({ model: "haiku" }),
+      );
+    });
+
+    it("uses sonnet for low complexity", async () => {
+      await delegate.spawn("Simple lookup", 123, undefined, { complexity: "low" });
+      expect(mockProcessService.createProcess).toHaveBeenCalledWith(
+        expect.objectContaining({ model: "sonnet" }),
+      );
+    });
+
+    it("uses sonnet for medium complexity", async () => {
+      await delegate.spawn("Research task", 123, undefined, { complexity: "medium" });
+      expect(mockProcessService.createProcess).toHaveBeenCalledWith(
+        expect.objectContaining({ model: "sonnet" }),
+      );
+    });
+
+    it("uses opus for hard complexity", async () => {
+      await delegate.spawn("Complex architecture", 123, undefined, { complexity: "hard" });
+      expect(mockProcessService.createProcess).toHaveBeenCalledWith(
+        expect.objectContaining({ model: "opus" }),
+      );
+    });
+
+    it("defaults to medium when no complexity specified", async () => {
+      await delegate.spawn("Task", 123);
+      expect(mockProcessService.createProcess).toHaveBeenCalledWith(
+        expect.objectContaining({ model: "sonnet" }),
+      );
     });
   });
 

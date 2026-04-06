@@ -104,6 +104,28 @@ export class DatabaseService implements OnModuleDestroy {
         username TEXT,
         paired_at TEXT NOT NULL
       );
+
+      CREATE TABLE IF NOT EXISTS consolidation_log (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        stage TEXT NOT NULL,
+        processed_up_to INTEGER NOT NULL,
+        result TEXT,
+        created_at INTEGER NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_consolidation_stage ON consolidation_log(stage);
+
+      CREATE TABLE IF NOT EXISTS triage_tags (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        message_id TEXT NOT NULL,
+        tag TEXT NOT NULL,
+        extracted_fact TEXT,
+        created_at INTEGER NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_triage_message ON triage_tags(message_id);
     `);
+
+    // Migrations for existing tables (ALTER TABLE has no IF NOT EXISTS)
+    try { this.db.exec("ALTER TABLE facts ADD COLUMN access_count INTEGER NOT NULL DEFAULT 0"); } catch { /* column exists */ }
+    try { this.db.exec("ALTER TABLE facts ADD COLUMN last_accessed_at INTEGER"); } catch { /* column exists */ }
   }
 }

@@ -4,6 +4,8 @@ import * as path from "node:path";
 import { ClaudeProcessService } from "./claude-process.service.js";
 import { BusService } from "../bus/bus.service.js";
 import { HealthService } from "./health.service.js";
+import { ConfigService } from "../config/config.service.js";
+import type { Complexity } from "./types.js";
 import { log } from "../shared/logger.js";
 
 export interface DelegateInfo {
@@ -35,13 +37,18 @@ export class DelegateService {
     @Inject(ClaudeProcessService) private readonly processService: ClaudeProcessService,
     @Inject(BusService) private readonly bus: BusService,
     @Inject(HealthService) private readonly health: HealthService,
+    @Inject(ConfigService) private readonly config: ConfigService,
   ) {}
+
+  private resolveModel(complexity: Complexity): string {
+    return this.config.models.delegate[complexity];
+  }
 
   async spawn(
     task: string,
     chatId: string | number,
     messageId?: string | number,
-    opts?: { maxRetries?: number; name?: string },
+    opts?: { maxRetries?: number; name?: string; complexity?: Complexity },
   ): Promise<void> {
     const agentId = `delegate-${Date.now()}`;
     const displayName = opts?.name ?? task;
@@ -56,7 +63,11 @@ export class DelegateService {
     };
     this.delegates.set(agentId, info);
 
-    this.bus.emit("agent:spawned", { id: agentId, task: displayName, lane: "sub" });
+    const complexity = opts?.complexity ?? "medium";
+    const model = this.resolveModel(complexity);
+
+    log.info(`[delegate] Spawning ${agentId} complexity=${complexity} model=${model} task="${displayName.slice(0, 60)}"`);
+    this.bus.emit("agent:spawned", { id: agentId, task: displayName, lane: "sub", model, complexity });
     this.health.trackAgent(agentId, Date.now());
 
     const systemPrompt = this.buildDelegatePrompt(agentId);
@@ -85,6 +96,7 @@ export class DelegateService {
           systemPrompt,
           timeout: DelegateService.TIMEOUT_MS,
           maxTurns: 25,
+          model,
           allowedTools: ["Read", "Write", "Edit", "Bash", "Glob", "Grep", "WebSearch", "WebFetch"],
         });
 
@@ -175,19 +187,19 @@ export class DelegateService {
   }
 
   private buildDelegatePrompt(agentId: string): string {
+    // Static instructions first (cache-friendly), dynamic agent ID last
     const sections: string[] = [];
 
-    sections.push(`You are a background worker agent for Rue (agent ID: ${agentId}). Complete the given task thoroughly using your tools.`);
-    sections.push(`Output ONLY the final answer/result. Be concise but complete.`);
+    sections.push("Background worker for Rue. Complete task thoroughly. Output ONLY final answer. Concise but complete.");
+    sections.push("\n## Memory Persistence");
+    sections.push("Save important info to long-term memory via memory-save skill. People, decisions, preferences, project context = save. Ephemeral chat = skip.");
+    sections.push("\n## Auto-Skill Creation");
+    sections.push("If your task involved a reusable pattern (API integration, data transform, automation) and no existing skill covers it, create a new skill:");
+    sections.push("1. Read `docs/how-to-create-skills.md` first");
+    sections.push("2. Create `skills/<name>/SKILL.md`, `skills/<name>/run.ts`, `skills/<name>/metadata.json`");
+    sections.push("Only create skills for genuinely reusable patterns, not one-off tasks.");
 
-    sections.push(`\n## Communication`);
-    sections.push(`If you need clarification, input from the user, or a decision before continuing, use the delegate-ask skill:`);
-    sections.push("```bash");
-    sections.push(`node --import tsx/esm skills/delegate-ask/run.ts --agent-id "${agentId}" --question "Your question here"`);
-    sections.push("```");
-    sections.push(`This will pause your execution, send the question to the orchestrator, and return the answer. Use this when you genuinely need input — don't ask unnecessary questions.`);
-
-    // Discover skills
+    // Skills (semi-static, changes rarely)
     const skillsDir = path.join(process.cwd(), "skills");
     if (fs.existsSync(skillsDir)) {
       const entries = fs.readdirSync(skillsDir, { withFileTypes: true });
@@ -207,13 +219,19 @@ export class DelegateService {
         skills.push({ name: entry.name, description });
       }
       if (skills.length > 0) {
-        sections.push(`\n## Available Skills`);
+        sections.push("\n## Skills");
         for (const skill of skills) {
           sections.push(`- **${skill.name}**: ${skill.description}`);
         }
-        sections.push(`\nTo use a skill, run: \`node --import tsx/esm skills/<name>/run.ts <command> [args]\``);
+        sections.push("\nRun: `node --import tsx/esm skills/<name>/run.ts <command> [args]`");
       }
     }
+
+    // Dynamic: agent ID injected last
+    sections.push(`\n## Agent ID: ${agentId}`);
+    sections.push(`Need clarification? Ask:`);
+    sections.push(`\`node --import tsx/esm skills/delegate-ask/run.ts --agent-id "${agentId}" --question "question"\``);
+    sections.push("Only ask when genuinely stuck. No unnecessary questions.");
 
     return sections.join("\n");
   }

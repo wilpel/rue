@@ -31,9 +31,15 @@ if (command === "spawn") {
   const name = getArg("name");
   const chatId = getArg("chat-id");
   const messageId = getArg("message-id");
+  const complexity = getArg("complexity");
 
   if (!task) {
     console.error("Error: --task is required");
+    process.exit(1);
+  }
+
+  if (!complexity || !["trivial", "low", "medium", "hard"].includes(complexity)) {
+    console.error("Error: --complexity is required (trivial, low, medium, or hard)");
     process.exit(1);
   }
 
@@ -47,6 +53,7 @@ if (command === "spawn") {
       body: JSON.stringify({
         task,
         name,
+        complexity,
         chatId: chatId ? parseInt(chatId, 10) : 0,
         messageId: messageId ? parseInt(messageId, 10) : undefined,
       }),
@@ -54,7 +61,7 @@ if (command === "spawn") {
 
     const data = await res.json() as Record<string, unknown>;
     if (data.ok) {
-      console.log(`Delegated: ${data.agentId}`);
+      console.log(`Delegated (${complexity} → ${data.complexity}): ${data.agentId}`);
     } else {
       console.error(`Failed: ${data.error}`);
       process.exit(1);
@@ -108,6 +115,8 @@ if (command === "spawn") {
   }
 } else {
   console.log("Usage:");
-  console.log("  delegate spawn  --task \"...\" --name \"Web researcher\" --chat-id 12345 [--message-id 67890]");
+  console.log("  delegate spawn  --task \"...\" --name \"Web researcher\" --complexity medium --chat-id 12345 [--message-id 67890]");
   console.log("  delegate status [--id <agent-id>]");
+  console.log("");
+  console.log("Complexity levels: trivial (haiku), low (sonnet), medium (sonnet), hard (opus)");
 }

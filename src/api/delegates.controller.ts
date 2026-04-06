@@ -1,10 +1,10 @@
-import { Controller, Get, Post, Param, Body, HttpCode } from "@nestjs/common";
+import { Controller, Get, Post, Param, Body, HttpCode, Inject } from "@nestjs/common";
 import { DelegateService } from "../agents/delegate.service.js";
 import { log } from "../shared/logger.js";
 
 @Controller("api")
 export class DelegatesController {
-  constructor(private readonly delegate: DelegateService) {}
+  constructor(@Inject(DelegateService) private readonly delegate: DelegateService) {}
 
   @Get("delegates")
   listDelegates() {
@@ -20,11 +20,15 @@ export class DelegatesController {
 
   @Post("delegate")
   @HttpCode(200)
-  spawnDelegate(@Body() body: { task: string; name?: string; chatId?: number; messageId?: number }) {
+  spawnDelegate(@Body() body: { task: string; name?: string; chatId?: number; messageId?: number; complexity?: string }) {
     if (!body.task) return { error: "task is required" };
+    const validComplexities = ["trivial", "low", "medium", "hard"] as const;
+    const complexity = validComplexities.includes(body.complexity as typeof validComplexities[number])
+      ? (body.complexity as typeof validComplexities[number])
+      : "medium";
     const chatId = body.chatId ?? 0;
-    this.delegate.spawn(body.task, chatId, body.messageId, { name: body.name }).catch(err => log.error(`[delegates] Spawn failed: ${err instanceof Error ? err.message : err}`));
-    return { ok: true };
+    this.delegate.spawn(body.task, chatId, body.messageId, { name: body.name, complexity }).catch(err => log.error(`[delegates] Spawn failed: ${err instanceof Error ? err.message : err}`));
+    return { ok: true, complexity };
   }
 
   @Post("delegate/:id/ask")

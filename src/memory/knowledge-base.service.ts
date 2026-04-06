@@ -1,10 +1,52 @@
 import { Injectable } from "@nestjs/common";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import type { ActivationService } from "./activation.service.js";
 
 @Injectable()
 export class KnowledgeBaseService {
-  constructor(private readonly kbDir: string) {}
+  private accessLog = new Map<string, { count: number; lastAt: number }>();
+  private accessLogDirty = false;
+
+  constructor(
+    private readonly kbDir: string,
+    private readonly activation?: ActivationService,
+  ) {
+    this.loadAccessLog();
+  }
+
+  private get accessLogPath(): string { return path.join(this.kbDir, ".access-log.json"); }
+
+  private loadAccessLog(): void {
+    try {
+      if (fs.existsSync(this.accessLogPath)) {
+        const data = JSON.parse(fs.readFileSync(this.accessLogPath, "utf-8")) as Record<string, { count: number; lastAt: number }>;
+        for (const [k, v] of Object.entries(data)) this.accessLog.set(k, v);
+      }
+    } catch { /* ignore corrupt file */ }
+  }
+
+  private saveAccessLog(): void {
+    if (!this.accessLogDirty) return;
+    try {
+      const obj: Record<string, { count: number; lastAt: number }> = {};
+      for (const [k, v] of this.accessLog) obj[k] = v;
+      fs.writeFileSync(this.accessLogPath, JSON.stringify(obj));
+      this.accessLogDirty = false;
+    } catch { /* ignore write failures */ }
+  }
+
+  private recordAccess(pagePath: string): void {
+    const entry = this.accessLog.get(pagePath) ?? { count: 0, lastAt: 0 };
+    entry.count++;
+    entry.lastAt = Date.now();
+    this.accessLog.set(pagePath, entry);
+    this.accessLogDirty = true;
+    // Debounced save: write after 100ms of inactivity
+    if (this._saveTimer) clearTimeout(this._saveTimer);
+    this._saveTimer = setTimeout(() => this.saveAccessLog(), 100);
+  }
+  private _saveTimer: ReturnType<typeof setTimeout> | null = null;
 
   savePage(pagePath: string, content: string, tags: string[]): void {
     const normalized = this.normPath(pagePath);
@@ -54,14 +96,31 @@ export class KnowledgeBaseService {
       const content = this.readPage(pagePath);
       if (!content) continue;
       const lower = content.toLowerCase();
-      let score = 0;
-      for (const term of terms) { score += (lower.split(term).length - 1); if (pagePath.toLowerCase().includes(term)) score += 3; }
-      if (score > 0) {
-        const body = content.replace(/^---[\s\S]*?---\n?/, "").trim();
-        results.push({ path: pagePath, snippet: body.slice(0, 120), score });
+      let contentScore = 0;
+      for (const term of terms) { contentScore += (lower.split(term).length - 1); if (pagePath.toLowerCase().includes(term)) contentScore += 3; }
+      if (contentScore === 0) continue;
+
+      let score = contentScore;
+      if (this.activation) {
+        const access = this.accessLog.get(pagePath) ?? { count: 0, lastAt: 0 };
+        const parsed = this.parseFrontmatter(content);
+        const tags = parsed.meta.tags ?? [];
+        const { total } = this.activation.computeActivation({
+          accessCount: access.count,
+          lastAccessedAt: access.lastAt || null,
+          contentScore,
+          tags,
+        });
+        score = total;
       }
+
+      const body = content.replace(/^---[\s\S]*?---\n?/, "").trim();
+      results.push({ path: pagePath, snippet: body.slice(0, 120), score });
     }
-    return results.sort((a, b) => b.score - a.score).slice(0, maxResults);
+
+    const sorted = results.sort((a, b) => b.score - a.score).slice(0, maxResults);
+    for (const r of sorted) this.recordAccess(r.path);
+    return sorted;
   }
 
   toPromptText(): string | null {

@@ -1,5 +1,7 @@
 import type { Lane } from "../shared/types.js";
 
+export type Complexity = "trivial" | "low" | "medium" | "hard";
+
 export interface AgentConfig {
   id: string;
   task: string;
