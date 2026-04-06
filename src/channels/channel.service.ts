@@ -135,27 +135,33 @@ export class ChannelService implements OnModuleInit {
     };
     const route = this.router.resolve(routeMsg);
 
-    const history = this.getHistory(chatId, 20);
     const systemPrompt = this.assembler.assemble("", {
       systemPrompt: route.systemPromptPath,
       personality: route.personalityPath,
     }, "dispatcher");
 
-    // Get the latest user message to highlight what needs a response
-    const recentMsgs = this.messages.recentByChatId(chatId, 5);
-    const lastUserMsg = [...recentMsgs].reverse().find(m => {
+    // Get the latest user messages (what triggered this agent run)
+    const recentMsgs = this.messages.recentByChatId(chatId, 10);
+    // Split into user messages and agent responses for cleaner context
+    const userMessages = recentMsgs.filter(m => {
       const tag = (m.metadata as Record<string, unknown>)?.tag as string | undefined;
       return tag?.startsWith("USER");
     });
-    const newMessageLine = lastUserMsg
-      ? `\n\nNEW MESSAGE from user: "${lastUserMsg.content}"\n`
-      : "";
+    const lastFewUserMsgs = userMessages.slice(-3);
+    const latestUserMsg = lastFewUserMsgs[lastFewUserMsgs.length - 1];
 
-    const prompt = `Here is the recent conversation on your channel:\n\n${history}\n\n---${newMessageLine}\nRespond to the user's latest message. Output text = sent to Telegram. Use Bash to run skills if needed.`;
+    // Build a clean conversation context (last 6 messages for context, not full history)
+    const contextMsgs = recentMsgs.slice(-6).map(m => {
+      const tag = (m.metadata as Record<string, unknown>)?.tag as string | undefined;
+      const role = tag?.startsWith("USER") ? "User" : "Rue";
+      return `${role}: ${m.content}`;
+    }).join("\n");
+
+    const prompt = latestUserMsg
+      ? `[Telegram message from chat_id=${chatId} message_id=${(latestUserMsg.metadata as Record<string, unknown>)?.messageId ?? ""}]\n\nConversation:\n${contextMsgs}\n\nThe user just said: "${latestUserMsg.content}"\n\nRespond naturally. Output text = sent to Telegram. Use Bash to run skills if needed.`
+      : `Conversation:\n${contextMsgs}\n\nRespond to the latest message.`;
 
     log.info(`[channel] Triggering agent for chat ${chatId} (route: ${route.agentId})`);
-    log.info(`[channel] Prompt for agent:\n${prompt.slice(0, 500)}`);
-    log.info(`[channel] System prompt length: ${systemPrompt.length}, tools: ${route.tools.join(",")}, model: ${this.primaryModel}`);
 
     // Don't resume sessions — fresh context with explicit history prevents the agent
     // from thinking it already responded to messages it sees in the resumed session
