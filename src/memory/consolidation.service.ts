@@ -6,7 +6,7 @@ import { KnowledgeBaseService } from "./knowledge-base.service.js";
 import { IdentityService } from "../identity/identity.service.js";
 import { UserModelService } from "../identity/user-model.service.js";
 import { WorkspaceService } from "./workspace.service.js";
-import { DatabaseService } from "../database/database.service.js";
+import { SupabaseService } from "../database/supabase.service.js";
 import { BusService } from "../bus/bus.service.js";
 import { ConfigService } from "../config/config.service.js";
 import { log } from "../shared/logger.js";
@@ -34,7 +34,7 @@ export class ConsolidationService implements OnModuleInit, OnModuleDestroy {
     @Inject(IdentityService) private readonly identity: IdentityService,
     @Inject(UserModelService) private readonly userModel: UserModelService,
     @Inject(WorkspaceService) private readonly workspace: WorkspaceService,
-    @Inject(DatabaseService) private readonly db: DatabaseService,
+    @Inject(SupabaseService) private readonly db: SupabaseService,
     @Inject(BusService) private readonly bus: BusService,
     @Inject(ConfigService) config: ConfigService,
   ) {
@@ -67,17 +67,20 @@ export class ConsolidationService implements OnModuleInit, OnModuleDestroy {
     if (this.synthesisTimer) clearInterval(this.synthesisTimer);
   }
 
-  private getWatermark(stage: string): number {
-    const row = this.db.getDb().prepare(
-      "SELECT processed_up_to FROM consolidation_log WHERE stage = ? ORDER BY created_at DESC LIMIT 1",
-    ).get(stage) as { processed_up_to: number } | undefined;
-    return row?.processed_up_to ?? 0;
+  private async getWatermark(stage: string): Promise<number> {
+    const { data } = await this.db.from("consolidation_log")
+      .select("processed_up_to")
+      .eq("stage", stage)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .single();
+    return (data?.processed_up_to as number) ?? 0;
   }
 
-  private setWatermark(stage: string, upTo: number, result: string): void {
-    this.db.getDb().prepare(
-      "INSERT INTO consolidation_log (stage, processed_up_to, result, created_at) VALUES (?, ?, ?, ?)",
-    ).run(stage, upTo, result, Date.now());
+  private async setWatermark(stage: string, upTo: number, result: string): Promise<void> {
+    await this.db.from("consolidation_log").insert({
+      stage, processed_up_to: upTo, result, created_at: Date.now(),
+    });
   }
 
   // Stage 1: Triage — classify messages, extract quick facts (haiku)
@@ -87,19 +90,23 @@ export class ConsolidationService implements OnModuleInit, OnModuleDestroy {
     this.bus.emit("system:triage", {});
 
     try {
-      const watermark = this.getWatermark("triage");
-      const rows = this.db.getDb().prepare(
-        "SELECT id, content, metadata, created_at FROM messages WHERE created_at > ? ORDER BY created_at ASC LIMIT 100",
-      ).all(watermark) as Array<{ id: string; content: string; metadata: string | null; created_at: number }>;
+      const watermark = await this.getWatermark("triage");
+      const { data: rows } = await this.db.from("messages")
+        .select("id, content, metadata, created_at")
+        .gt("created_at", watermark)
+        .order("created_at", { ascending: true })
+        .limit(100);
+      if (!rows) return;
 
       if (rows.length < this.config.triage.minNewMessages) {
         log.info(`[consolidation] Triage skipped — only ${rows.length} new messages`);
         return;
       }
 
-      const messageList = rows.map((r, i) => {
-        const tag = r.metadata ? (JSON.parse(r.metadata) as Record<string, unknown>)?.tag ?? "MSG" : "MSG";
-        return `${i}. [${tag}] (id:${r.id}) ${r.content.slice(0, 200)}`;
+      const messageList = rows.map((r: Record<string, unknown>, i: number) => {
+        const meta = r.metadata as Record<string, unknown> | null;
+        const tag = meta?.tag ?? "MSG";
+        return `${i}. [${tag}] (id:${r.id}) ${(r.content as string).slice(0, 200)}`;
       }).join("\n");
 
       const prompt = [
@@ -114,8 +121,8 @@ export class ConsolidationService implements OnModuleInit, OnModuleDestroy {
 
       // Note: delegate is fire-and-forget, we can't parse output here.
       // Instead, set watermark to latest message and let the delegate save facts via memory-save skill.
-      const latestTs = rows[rows.length - 1].created_at;
-      this.setWatermark("triage", latestTs, `Triaged ${rows.length} messages`);
+      const latestTs = rows[rows.length - 1].created_at as number;
+      await this.setWatermark("triage", latestTs, `Triaged ${rows.length} messages`);
       this.workspace.postSignal({ source: "consolidation", type: "triage-complete", content: `Triaged ${rows.length} messages`, salience: 0.3, ttlMs: 1_800_000 });
       log.info(`[consolidation] Triage completed — ${rows.length} messages processed`);
     } catch (err) {
@@ -132,8 +139,8 @@ export class ConsolidationService implements OnModuleInit, OnModuleDestroy {
     this.bus.emit("system:consolidation", {});
 
     try {
-      const watermark = this.getWatermark("consolidation");
-      const recentMessages = this.messages.recent(50);
+      const watermark = await this.getWatermark("consolidation");
+      const recentMessages = await this.messages.recent(50);
       const newMessages = recentMessages.filter(m => m.createdAt > watermark);
 
       if (newMessages.length < 3) {
@@ -146,10 +153,10 @@ export class ConsolidationService implements OnModuleInit, OnModuleDestroy {
         return `[${tag}] ${m.content}`;
       }).join("\n");
 
-      const factsSummary = this.semantic.toPromptText(undefined, 30);
-      const kbSummary = this.kb.toPromptText() ?? "No KB pages.";
-      const identityText = this.identity.toPromptText();
-      const userText = this.userModel.toPromptText();
+      const factsSummary = await this.semantic.toPromptText(undefined, 30);
+      const kbSummary = await this.kb.toPromptText() ?? "No KB pages.";
+      const identityText = await this.identity.toPromptText();
+      const userText = await this.userModel.toPromptText();
 
       const prompt = [
         "CONSOLIDATION: Review recent conversations and cross-reference with existing knowledge.",
@@ -183,7 +190,7 @@ export class ConsolidationService implements OnModuleInit, OnModuleDestroy {
       await this.delegate.spawn(prompt, 0, undefined, { name: "Consolidation", complexity: "medium" });
 
       const latestTs = newMessages[newMessages.length - 1].createdAt;
-      this.setWatermark("consolidation", latestTs, `Consolidated ${newMessages.length} messages`);
+      await this.setWatermark("consolidation", latestTs, `Consolidated ${newMessages.length} messages`);
       this.workspace.postSignal({ source: "consolidation", type: "consolidation-complete", content: `Consolidated ${newMessages.length} messages`, salience: 0.5, ttlMs: 3_600_000 });
       log.info(`[consolidation] Consolidation completed — ${newMessages.length} messages processed`);
     } catch (err) {
@@ -200,16 +207,17 @@ export class ConsolidationService implements OnModuleInit, OnModuleDestroy {
     this.bus.emit("system:synthesis", {});
 
     try {
-      const factsSummary = this.semantic.toPromptText(undefined, 50);
-      const kbSummary = this.kb.toPromptText() ?? "No KB pages.";
-      const identityText = this.identity.toPromptText();
-      const userText = this.userModel.toPromptText();
+      const factsSummary = await this.semantic.toPromptText(undefined, 50);
+      const kbSummary = await this.kb.toPromptText() ?? "No KB pages.";
+      const identityText = await this.identity.toPromptText();
+      const userText = await this.userModel.toPromptText();
 
       // Get recent consolidation results for context
-      const recentLogs = this.db.getDb().prepare(
-        "SELECT stage, result, created_at FROM consolidation_log ORDER BY created_at DESC LIMIT 10",
-      ).all() as Array<{ stage: string; result: string; created_at: number }>;
-      const logSummary = recentLogs.map(l => `[${l.stage}] ${l.result}`).join("\n") || "No recent consolidation history.";
+      const { data: recentLogs } = await this.db.from("consolidation_log")
+        .select("stage, result, created_at")
+        .order("created_at", { ascending: false })
+        .limit(10);
+      const logSummary = (recentLogs ?? []).map((l: Record<string, unknown>) => `[${l.stage}] ${l.result}`).join("\n") || "No recent consolidation history.";
 
       const prompt = [
         "CREATIVE SYNTHESIS: Form novel connections between unrelated memories. Generate insights.",
@@ -241,7 +249,7 @@ export class ConsolidationService implements OnModuleInit, OnModuleDestroy {
 
       await this.delegate.spawn(prompt, 0, undefined, { name: "Synthesis", complexity: "hard" });
 
-      this.setWatermark("synthesis", Date.now(), "Weekly synthesis completed");
+      await this.setWatermark("synthesis", Date.now(), "Weekly synthesis completed");
       this.workspace.postSignal({ source: "consolidation", type: "synthesis-complete", content: "Weekly creative synthesis completed", salience: 0.7, ttlMs: 7_200_000 });
       log.info("[consolidation] Synthesis completed");
     } catch (err) {

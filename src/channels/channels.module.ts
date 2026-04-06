@@ -7,6 +7,7 @@ import { TelegramStoreService } from "./adapters/telegram-store.service.js";
 import { CliAdapter } from "./adapters/cli.adapter.js";
 import { RouterService } from "../routing/router.service.js";
 import { ConfigService } from "../config/config.service.js";
+import { SupabaseService } from "../database/supabase.service.js";
 import { MemoryModule } from "../memory/memory.module.js";
 import { AgentsModule } from "../agents/agents.module.js";
 
@@ -22,8 +23,8 @@ import { AgentsModule } from "../agents/agents.module.js";
     },
     {
       provide: TelegramStoreService,
-      useFactory: (config: ConfigService) => new TelegramStoreService(config.dataDir),
-      inject: [ConfigService],
+      useFactory: (db: SupabaseService) => new TelegramStoreService(db),
+      inject: [SupabaseService],
     },
     {
       provide: TelegramAdapter,

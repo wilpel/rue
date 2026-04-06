@@ -7,7 +7,7 @@ import { ActivationService } from "./activation.service.js";
 import { KnowledgeBaseService } from "./knowledge-base.service.js";
 import { AssemblerService } from "./assembler.service.js";
 import { SessionService } from "./session.service.js";
-import { ConfigService } from "../config/config.service.js";
+import { SupabaseService } from "../database/supabase.service.js";
 import { IdentityService } from "../identity/identity.service.js";
 import { UserModelService } from "../identity/user-model.service.js";
 import { IdentityModule } from "../identity/identity.module.js";
@@ -26,7 +26,7 @@ const PROJECT_ROOT = path.resolve(__dirname, "..", "..");
     WorkspaceService,
     WorkspaceIntegrationService,
     SessionService,
-    { provide: KnowledgeBaseService, useFactory: (config: ConfigService, activation: ActivationService) => new KnowledgeBaseService(path.join(config.dataDir, "kb"), activation), inject: [ConfigService, ActivationService] },
+    { provide: KnowledgeBaseService, useFactory: (db: SupabaseService, activation: ActivationService) => new KnowledgeBaseService(db, activation), inject: [SupabaseService, ActivationService] },
     { provide: AssemblerService, useFactory: (semantic: SemanticRepository, workspace: WorkspaceService, identity: IdentityService, userModel: UserModelService, kb: KnowledgeBaseService) => new AssemblerService(semantic, workspace, identity, userModel, kb, PROJECT_ROOT), inject: [SemanticRepository, WorkspaceService, IdentityService, UserModelService, KnowledgeBaseService] },
   ],
   exports: [MessageRepository, SemanticRepository, WorkspaceService, ActivationService, KnowledgeBaseService, AssemblerService, SessionService],

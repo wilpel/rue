@@ -6,8 +6,8 @@ export class HistoryController {
   constructor(private readonly messages: MessageRepository) {}
 
   @Get("history")
-  getHistory(@Query("limit") limit?: string) {
-    const messages = this.messages.recent(parseInt(limit ?? "50", 10));
+  async getHistory(@Query("limit") limit?: string) {
+    const messages = await this.messages.recent(parseInt(limit ?? "50", 10));
     return { messages };
   }
 }

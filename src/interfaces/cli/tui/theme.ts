@@ -1,17 +1,18 @@
+// Dusk — warm purples and soft golds
 export const COLORS = {
-  primary: "#E8B87A",
-  secondary: "#D4956B",
-  success: "#8BA87A",
-  info: "#7AA2D4",
-  urgent: "#C47070",
-  dimmed: "#6B6560",
-  veryDim: "#4A3F35",
-  border: "#3A3530",
-  codeBg: "#2A2520",
-  codeText: "#C9A87C",
-  strongText: "#E8CDA0",
-  emText: "#C9B89A",
-  quoteText: "#A89080",
+  primary: "#C4A7E7",     // soft lavender
+  secondary: "#E0A46E",   // warm gold
+  success: "#9CCE6A",     // lime green
+  info: "#7DAEA3",        // sage teal
+  urgent: "#EA6962",      // soft coral
+  dimmed: "#928374",      // warm gray
+  veryDim: "#5A524C",     // brown gray
+  border: "#3C3836",      // charcoal
+  codeBg: "#1D2021",      // near black
+  codeText: "#D4BE98",    // tan
+  strongText: "#DFDAD4",  // warm white
+  emText: "#D3869B",      // dusty rose
+  quoteText: "#7C6F64",   // muted brown
 } as const;
 
 export const LAYOUT = {

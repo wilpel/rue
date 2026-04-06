@@ -1,100 +1,60 @@
 import { Injectable } from "@nestjs/common";
-import * as fs from "node:fs";
-import * as path from "node:path";
+import type { SupabaseService } from "../database/supabase.service.js";
 import type { ActivationService } from "./activation.service.js";
 
 @Injectable()
 export class KnowledgeBaseService {
-  private accessLog = new Map<string, { count: number; lastAt: number }>();
-  private accessLogDirty = false;
-
   constructor(
-    private readonly kbDir: string,
+    private readonly db: SupabaseService,
     private readonly activation?: ActivationService,
-  ) {
-    this.loadAccessLog();
-  }
+  ) {}
 
-  private get accessLogPath(): string { return path.join(this.kbDir, ".access-log.json"); }
-
-  private loadAccessLog(): void {
-    try {
-      if (fs.existsSync(this.accessLogPath)) {
-        const data = JSON.parse(fs.readFileSync(this.accessLogPath, "utf-8")) as Record<string, { count: number; lastAt: number }>;
-        for (const [k, v] of Object.entries(data)) this.accessLog.set(k, v);
-      }
-    } catch { /* ignore corrupt file */ }
-  }
-
-  private saveAccessLog(): void {
-    if (!this.accessLogDirty) return;
-    try {
-      const obj: Record<string, { count: number; lastAt: number }> = {};
-      for (const [k, v] of this.accessLog) obj[k] = v;
-      fs.writeFileSync(this.accessLogPath, JSON.stringify(obj));
-      this.accessLogDirty = false;
-    } catch { /* ignore write failures */ }
-  }
-
-  private recordAccess(pagePath: string): void {
-    const entry = this.accessLog.get(pagePath) ?? { count: 0, lastAt: 0 };
-    entry.count++;
-    entry.lastAt = Date.now();
-    this.accessLog.set(pagePath, entry);
-    this.accessLogDirty = true;
-    // Debounced save: write after 100ms of inactivity
-    if (this._saveTimer) clearTimeout(this._saveTimer);
-    this._saveTimer = setTimeout(() => this.saveAccessLog(), 100);
-  }
-  private _saveTimer: ReturnType<typeof setTimeout> | null = null;
-
-  savePage(pagePath: string, content: string, tags: string[]): void {
+  async savePage(pagePath: string, content: string, tags: string[]): Promise<void> {
     const normalized = this.normPath(pagePath);
-    const fp = this.fullPath(normalized);
-    fs.mkdirSync(path.dirname(fp), { recursive: true });
-    const existing = this.readPage(normalized);
     const today = new Date().toISOString().split("T")[0];
     const title = normalized.split("/").pop()!.replace(/-/g, " ").replace(/\b\w/g, c => c.toUpperCase());
+
+    const existing = await this.readPage(normalized);
     if (existing) {
-      const parsed = this.parseFrontmatter(existing);
-      const existingTags = parsed.meta.tags ?? [];
+      // Append to existing page, merge tags
+      const { data: row } = await this.db.from("kb_pages").select("tags").eq("path", normalized).single();
+      const existingTags = (row?.tags ?? []) as string[];
       const mergedTags = [...new Set([...existingTags, ...tags])];
-      const updatedFm = this.buildFrontmatter(parsed.meta.title ?? title, mergedTags, parsed.meta.created ?? today, today);
-      const newBody = parsed.body.trimEnd() + "\n\n" + content;
-      fs.writeFileSync(fp, updatedFm + "\n\n" + newBody.trim() + "\n");
+      const newBody = existing.trimEnd() + "\n\n" + content;
+      await this.db.from("kb_pages").update({
+        content: newBody.trim(), tags: mergedTags, updated_at: today,
+      }).eq("path", normalized);
     } else {
-      const fm = this.buildFrontmatter(title, tags, today, today);
-      fs.writeFileSync(fp, fm + "\n\n# " + title + "\n\n" + content + "\n");
+      const body = "# " + title + "\n\n" + content;
+      await this.db.from("kb_pages").insert({
+        path: normalized, title, content: body, tags, created_at: today, updated_at: today,
+      });
     }
   }
 
-  readPage(pagePath: string): string | null {
-    const fp = this.fullPath(this.normPath(pagePath));
-    if (!fs.existsSync(fp)) return null;
-    return fs.readFileSync(fp, "utf-8");
+  async readPage(pagePath: string): Promise<string | null> {
+    const { data } = await this.db.from("kb_pages").select("content").eq("path", this.normPath(pagePath)).single();
+    return data?.content as string | null ?? null;
   }
 
-  listPages(folder?: string): string[] {
-    const baseDir = folder ? path.join(this.kbDir, folder) : this.kbDir;
-    if (!fs.existsSync(baseDir)) return [];
-    const results: string[] = [];
-    const walk = (dir: string) => {
-      for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-        if (entry.isDirectory()) walk(path.join(dir, entry.name));
-        else if (entry.name.endsWith(".md")) results.push(path.relative(this.kbDir, path.join(dir, entry.name)).replace(/\.md$/, ""));
-      }
-    };
-    walk(baseDir);
-    return results.sort();
+  async listPages(folder?: string): Promise<string[]> {
+    let query = this.db.from("kb_pages").select("path").order("path");
+    if (folder) {
+      query = query.like("path", `${folder}%`);
+    }
+    const { data } = await query;
+    return (data ?? []).map(r => r.path as string).sort();
   }
 
-  search(query: string, maxResults = 10): Array<{ path: string; snippet: string; score: number }> {
-    const pages = this.listPages();
+  async search(query: string, maxResults = 10): Promise<Array<{ path: string; snippet: string; score: number }>> {
     const terms = query.toLowerCase().split(/\s+/);
+    const { data: pages } = await this.db.from("kb_pages").select("*");
+    if (!pages) return [];
+
     const results: Array<{ path: string; snippet: string; score: number }> = [];
-    for (const pagePath of pages) {
-      const content = this.readPage(pagePath);
-      if (!content) continue;
+    for (const page of pages) {
+      const content = page.content as string;
+      const pagePath = page.path as string;
       const lower = content.toLowerCase();
       let contentScore = 0;
       for (const term of terms) { contentScore += (lower.split(term).length - 1); if (pagePath.toLowerCase().includes(term)) contentScore += 3; }
@@ -102,69 +62,57 @@ export class KnowledgeBaseService {
 
       let score = contentScore;
       if (this.activation) {
-        const access = this.accessLog.get(pagePath) ?? { count: 0, lastAt: 0 };
-        const parsed = this.parseFrontmatter(content);
-        const tags = parsed.meta.tags ?? [];
         const { total } = this.activation.computeActivation({
-          accessCount: access.count,
-          lastAccessedAt: access.lastAt || null,
+          accessCount: page.access_count as number,
+          lastAccessedAt: page.last_accessed_at as number | null,
           contentScore,
-          tags,
+          tags: page.tags as string[],
         });
         score = total;
       }
 
-      const body = content.replace(/^---[\s\S]*?---\n?/, "").trim();
-      results.push({ path: pagePath, snippet: body.slice(0, 120), score });
+      results.push({ path: pagePath, snippet: content.slice(0, 120), score });
     }
 
     const sorted = results.sort((a, b) => b.score - a.score).slice(0, maxResults);
+    // Record access (fire and forget)
     for (const r of sorted) this.recordAccess(r.path);
     return sorted;
   }
 
-  toPromptText(): string | null {
-    if (!fs.existsSync(this.kbDir)) return null;
-    const pages: string[] = [];
+  async toPromptText(): Promise<string | null> {
+    const { data: pages } = await this.db.from("kb_pages").select("path, content").order("updated_at", { ascending: false });
+    if (!pages || pages.length === 0) return null;
+
+    const sections: string[] = [];
     let totalLen = 0;
     const MAX_LEN = 6000;
-    const walk = (dir: string) => {
-      for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-        if (entry.isDirectory()) walk(path.join(dir, entry.name));
-        else if (entry.name.endsWith(".md")) {
-          const relPath = path.relative(this.kbDir, path.join(dir, entry.name)).replace(/\.md$/, "");
-          const content = fs.readFileSync(path.join(dir, entry.name), "utf-8");
-          const body = content.replace(/^---[\s\S]*?---\n?/, "").trim();
-          if (body && totalLen + body.length < MAX_LEN) { pages.push(`### ${relPath}\n${body}`); totalLen += body.length; }
-        }
+
+    for (const page of pages) {
+      const body = (page.content as string).trim();
+      if (body && totalLen + body.length < MAX_LEN) {
+        sections.push(`### ${page.path}\n${body}`);
+        totalLen += body.length;
       }
-    };
-    walk(this.kbDir);
-    if (pages.length === 0) return null;
-    let result = pages.join("\n\n");
-    if (totalLen >= MAX_LEN) result += "\n\n...(more pages available via `kb search`)";
-    return `${pages.length} page(s) loaded:\n\n${result}`;
-  }
-
-  private normPath(p: string): string { return p.replace(/\.md$/, "").replace(/^\/+/, "").toLowerCase().replace(/\s+/g, "-"); }
-  private fullPath(pagePath: string): string { return path.join(this.kbDir, pagePath + ".md"); }
-
-  private parseFrontmatter(content: string): { meta: { title?: string; tags?: string[]; created?: string }; body: string } {
-    const match = content.match(/^---\n([\s\S]*?)\n---\n?([\s\S]*)$/);
-    if (!match) return { meta: {}, body: content };
-    const yaml = match[1]; const body = match[2];
-    const meta: { title?: string; tags?: string[]; created?: string } = {};
-    for (const line of yaml.split("\n")) {
-      const colonIdx = line.indexOf(":"); if (colonIdx === -1) continue;
-      const key = line.slice(0, colonIdx).trim(); const val = line.slice(colonIdx + 1).trim();
-      if (key === "title") meta.title = val;
-      if (key === "created") meta.created = val;
-      if (key === "tags") meta.tags = val.replace(/^\[|\]$/g, "").split(",").map(t => t.trim()).filter(Boolean);
     }
-    return { meta, body };
+
+    if (sections.length === 0) return null;
+    let result = sections.join("\n\n");
+    if (totalLen >= MAX_LEN) result += "\n\n...(more pages available via `kb search`)";
+    return `${sections.length} page(s) loaded:\n\n${result}`;
   }
 
-  private buildFrontmatter(title: string, tags: string[], created: string, updated: string): string {
-    return `---\ntitle: ${title}\ntags: [${tags.join(", ")}]\ncreated: ${created}\nupdated: ${updated}\n---`;
+  private async recordAccess(pagePath: string): Promise<void> {
+    const { data } = await this.db.from("kb_pages").select("access_count").eq("path", pagePath).single();
+    if (data) {
+      await this.db.from("kb_pages").update({
+        access_count: (data.access_count as number) + 1,
+        last_accessed_at: Date.now(),
+      }).eq("path", pagePath);
+    }
+  }
+
+  private normPath(p: string): string {
+    return p.replace(/\.md$/, "").replace(/^\/+/, "").toLowerCase().replace(/\s+/g, "-");
   }
 }

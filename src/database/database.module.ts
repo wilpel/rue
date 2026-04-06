@@ -1,5 +1,5 @@
 import { Global, Module } from "@nestjs/common";
-import { DatabaseService } from "./database.service.js";
+import { SupabaseService } from "./supabase.service.js";
 import { SessionMaintenanceService } from "./session-maintenance.service.js";
 import { ConfigService } from "../config/config.service.js";
 import { BusService } from "../bus/bus.service.js";
@@ -8,17 +8,20 @@ import { BusService } from "../bus/bus.service.js";
 @Module({
   providers: [
     {
-      provide: DatabaseService,
-      useFactory: (config: ConfigService) => new DatabaseService(config.dataDir),
+      provide: SupabaseService,
+      useFactory: (config: ConfigService) => new SupabaseService(
+        config.supabase.url,
+        config.supabase.serviceRoleKey,
+      ),
       inject: [ConfigService],
     },
     {
       provide: SessionMaintenanceService,
-      useFactory: (db: DatabaseService, bus: BusService, config: ConfigService) =>
+      useFactory: (db: SupabaseService, bus: BusService, config: ConfigService) =>
         new SessionMaintenanceService(db, bus, config.sessions),
-      inject: [DatabaseService, BusService, ConfigService],
+      inject: [SupabaseService, BusService, ConfigService],
     },
   ],
-  exports: [DatabaseService, SessionMaintenanceService],
+  exports: [SupabaseService, SessionMaintenanceService],
 })
 export class DatabaseModule {}

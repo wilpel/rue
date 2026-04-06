@@ -2,11 +2,21 @@ import { Command } from "commander";
 import { DaemonClient } from "./client.js";
 import { loadConfig } from "../../shared/config.js";
 import { TelegramStoreService } from "../../channels/adapters/telegram-store.service.js";
+import { SupabaseService } from "../../database/supabase.service.js";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
 
 const CONFIG_PATH = path.join(os.homedir(), ".rue", "config.json");
+
+function createTelegramStore(): TelegramStoreService {
+  const config = loadConfig(CONFIG_PATH) as Record<string, unknown>;
+  const supa = (config.supabase as Record<string, string> | undefined) ?? {};
+  const supabaseUrl = supa.url ?? process.env.SUPABASE_URL ?? "https://fygjocohiiilreitnsnl.supabase.co";
+  const supabaseKey = supa.serviceRoleKey ?? process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
+  const db = new SupabaseService(supabaseUrl, supabaseKey);
+  return new TelegramStoreService(db);
+}
 
 export function createCLI(): Command {
   const program = new Command();
@@ -173,10 +183,9 @@ export function createCLI(): Command {
   telegram
     .command("setup <botToken>")
     .description("Configure the Telegram bot token")
-    .action((botToken: string) => {
-      const config = loadConfig(CONFIG_PATH);
-      const store = new TelegramStoreService(config.dataDir);
-      store.setBotToken(botToken);
+    .action(async (botToken: string) => {
+      const store = createTelegramStore();
+      await store.setBotToken(botToken);
       console.log("Telegram bot token saved.");
       console.log("Restart the daemon to activate the bot.");
     });
@@ -184,16 +193,15 @@ export function createCLI(): Command {
   telegram
     .command("pair")
     .description("Generate a pairing code for Telegram")
-    .action(() => {
-      const config = loadConfig(CONFIG_PATH);
-      const store = new TelegramStoreService(config.dataDir);
+    .action(async () => {
+      const store = createTelegramStore();
 
-      if (!store.getBotToken()) {
+      if (!await store.getBotToken()) {
         console.error("No bot token configured. Run: rue telegram setup <token>");
         process.exit(1);
       }
 
-      const pairingCode = store.generatePairingCode();
+      const pairingCode = await store.generatePairingCode();
       const expiresIn = Math.round((pairingCode.expiresAt - Date.now()) / 1000);
       console.log(`\nPairing code: ${pairingCode.code}`);
       console.log(`Expires in ${expiresIn} seconds.`);
@@ -203,10 +211,9 @@ export function createCLI(): Command {
   telegram
     .command("users")
     .description("List paired Telegram users")
-    .action(() => {
-      const config = loadConfig(CONFIG_PATH);
-      const store = new TelegramStoreService(config.dataDir);
-      const users = store.getPairedUsers();
+    .action(async () => {
+      const store = createTelegramStore();
+      const users = await store.getPairedUsers();
 
       if (users.length === 0) {
         console.log("No paired users.");
@@ -223,15 +230,14 @@ export function createCLI(): Command {
   telegram
     .command("remove <telegramId>")
     .description("Remove a paired Telegram user by their ID")
-    .action((telegramId: string) => {
-      const config = loadConfig(CONFIG_PATH);
-      const store = new TelegramStoreService(config.dataDir);
+    .action(async (telegramId: string) => {
+      const store = createTelegramStore();
       const id = parseInt(telegramId, 10);
       if (isNaN(id)) {
         console.error("Invalid Telegram ID.");
         process.exit(1);
       }
-      if (store.removePairedUser(id)) {
+      if (await store.removePairedUser(id)) {
         console.log(`Removed user ${telegramId}.`);
       } else {
         console.log(`User ${telegramId} not found.`);
@@ -241,11 +247,10 @@ export function createCLI(): Command {
   telegram
     .command("status")
     .description("Show Telegram bot configuration status")
-    .action(() => {
-      const config = loadConfig(CONFIG_PATH);
-      const store = new TelegramStoreService(config.dataDir);
-      const token = store.getBotToken();
-      const users = store.getPairedUsers();
+    .action(async () => {
+      const store = createTelegramStore();
+      const token = await store.getBotToken();
+      const users = await store.getPairedUsers();
 
       console.log(`Bot token: ${token ? "configured" : "not set"}`);
       console.log(`Paired users: ${users.length}`);

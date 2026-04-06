@@ -47,8 +47,8 @@ export class HeartbeatService implements OnModuleInit, OnModuleDestroy {
     this.bus.emit("system:heartbeat", {});
 
     try {
-      const history = this.messages.compactHistory({ limit: 10 });
-      const activeTasks = this.tasks.listActive();
+      const history = await this.messages.compactHistory({ limit: 10 });
+      const activeTasks = await this.tasks.listActive();
       const taskSummary = activeTasks.length > 0
         ? activeTasks.map(t => `- [${t.priority}] ${t.title} (${t.status}${t.due_at ? `, due ${new Date(t.due_at).toISOString()}` : ""})`).join("\n")
         : "No pending tasks.";

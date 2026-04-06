@@ -55,9 +55,9 @@ export class ChannelService implements OnModuleInit {
    * Receive a debounced batch of messages from a channel.
    * Persists each message and triggers the agent.
    */
-  handleBatch(batch: DebouncedBatch): void {
+  async handleBatch(batch: DebouncedBatch): Promise<void> {
     for (const msg of batch.messages) {
-      this.messages.append({
+      await this.messages.append({
         role: "channel",
         content: msg.text,
         metadata: {
@@ -74,8 +74,8 @@ export class ChannelService implements OnModuleInit {
    * Post a message to the channel (used by delegate results and internal writes).
    * Triggers the main agent if it's not from the agent itself.
    */
-  post(tag: string, content: string, chatId: string, extra?: Record<string, unknown>): void {
-    this.messages.append({
+  async post(tag: string, content: string, chatId: string, extra?: Record<string, unknown>): Promise<void> {
+    await this.messages.append({
       role: "channel",
       content,
       metadata: { tag, chatId, ...extra },
@@ -93,8 +93,8 @@ export class ChannelService implements OnModuleInit {
    * Get last N messages from a chat, formatted as the conversation thread.
    * Older messages are compacted (truncated) to save tokens.
    */
-  getHistory(chatId: string, limit = 20): string {
-    const result = this.messages.compactHistory({ limit, chatId });
+  async getHistory(chatId: string, limit = 20): Promise<string> {
+    const result = await this.messages.compactHistory({ limit, chatId });
     return result || "(No conversation history)";
   }
 
@@ -135,13 +135,13 @@ export class ChannelService implements OnModuleInit {
     };
     const route = this.router.resolve(routeMsg);
 
-    const systemPrompt = this.assembler.assemble("", {
+    const systemPrompt = await this.assembler.assemble("", {
       systemPrompt: route.systemPromptPath,
       personality: route.personalityPath,
     }, "dispatcher");
 
     // Get the latest user messages (what triggered this agent run)
-    const recentMsgs = this.messages.recentByChatId(chatId, 10);
+    const recentMsgs = await this.messages.recentByChatId(chatId, 10);
     // Split into user messages and agent responses for cleaner context
     const userMessages = recentMsgs.filter(m => {
       const tag = (m.metadata as Record<string, unknown>)?.tag as string | undefined;
@@ -172,11 +172,11 @@ export class ChannelService implements OnModuleInit {
 
       const cleaned = output.replace(/\[no_?response\]/gi, "").trim();
       if (cleaned) {
-        this.messages.append({ role: "channel", content: cleaned, metadata: { tag: "AGENT_RUE", chatId } });
+        await this.messages.append({ role: "channel", content: cleaned, metadata: { tag: "AGENT_RUE", chatId } });
         await this.registry.sendMessage(channelId, { chatId }, cleaned);
         log.info(`[channel] Agent responded (${cleaned.length} chars)`);
       } else if (output.match(/\[no_?response\]/i)) {
-        const lastUserMsgId = this.getLastUserMessageId(chatId);
+        const lastUserMsgId = await this.getLastUserMessageId(chatId);
         if (lastUserMsgId) {
           await this.registry
             .sendReaction(channelId, { chatId }, lastUserMsgId, "\uD83D\uDC4D")
@@ -208,8 +208,8 @@ export class ChannelService implements OnModuleInit {
   /**
    * Find the messageId of the last user message on a chat (for reactions).
    */
-  private getLastUserMessageId(chatId: string): string | null {
-    const recent = this.messages.recent(10);
+  private async getLastUserMessageId(chatId: string): Promise<string | null> {
+    const recent = await this.messages.recent(10);
     const userMsgs = recent.filter(
       (m) =>
         (m.metadata as Record<string, unknown>)?.chatId === chatId &&

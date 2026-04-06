@@ -21,10 +21,10 @@ export class StatusController {
   }
 
   @Get("dashboard")
-  getDashboard() {
+  async getDashboard() {
     const agents = this.supervisor.listAgents();
-    const recentMessages = this.messages.recent(10);
-    const events = this.persistence.readTail(30);
+    const recentMessages = await this.messages.recent(10);
+    const events = await this.persistence.readTail(30);
     return {
       agents: agents.map(a => ({ id: a.id, task: a.config.task, state: a.state, lane: a.config.lane })),
       recentMessages,

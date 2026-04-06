@@ -1,6 +1,5 @@
 import { Injectable } from "@nestjs/common";
-import * as fs from "node:fs";
-import * as path from "node:path";
+import type { SupabaseService } from "../database/supabase.service.js";
 
 export interface Identity {
   name: string | null;
@@ -22,22 +21,31 @@ const DEFAULT_IDENTITY: Identity = {
 
 @Injectable()
 export class IdentityService {
-  private state: Identity;
-  private readonly filePath: string;
+  private state: Identity = { ...DEFAULT_IDENTITY };
+  private loaded = false;
 
-  constructor(dir: string) {
-    fs.mkdirSync(dir, { recursive: true });
-    this.filePath = path.join(dir, "identity.json");
-    this.state = this.load();
+  constructor(private readonly db: SupabaseService) {}
+
+  private async ensureLoaded(): Promise<void> {
+    if (this.loaded) return;
+    const { data } = await this.db.from("identity").select("data").eq("id", 1).single();
+    if (data?.data) this.state = data.data as Identity;
+    this.loaded = true;
   }
 
-  getState(): Identity { return { ...this.state }; }
+  async getState(): Promise<Identity> {
+    await this.ensureLoaded();
+    return { ...this.state };
+  }
 
   update(partial: Partial<Identity>): void { this.state = { ...this.state, ...partial }; }
 
-  save(): void { fs.writeFileSync(this.filePath, JSON.stringify(this.state, null, 2), "utf-8"); }
+  async save(): Promise<void> {
+    await this.db.from("identity").upsert({ id: 1, data: this.state });
+  }
 
-  toPromptText(): string {
+  async toPromptText(): Promise<string> {
+    await this.ensureLoaded();
     const lines: string[] = ["# Agent identity"];
     if (this.state.name) lines.push(`You are ${this.state.name}, an AI assistant with a defined identity.`);
     else lines.push("You are an AI assistant with a defined identity.");
@@ -47,12 +55,5 @@ export class IdentityService {
     if (this.state.expertiseAreas.length > 0) lines.push(`Areas of expertise: ${this.state.expertiseAreas.join(", ")}`);
     if (this.state.quirks.length > 0) lines.push(`Quirks: ${this.state.quirks.join(", ")}`);
     return lines.join("\n");
-  }
-
-  private load(): Identity {
-    if (fs.existsSync(this.filePath)) {
-      try { return JSON.parse(fs.readFileSync(this.filePath, "utf-8")) as Identity; } catch { /* fall through */ }
-    }
-    return { ...DEFAULT_IDENTITY };
   }
 }

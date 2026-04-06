@@ -34,7 +34,7 @@ export class AssemblerService {
 
   reload(): void { this.systemPromptCache = null; this.personalityCache = null; this.skillsCache = null; }
 
-  assemble(_task: string, promptPaths?: { systemPrompt?: string; personality?: string }, mode: AssembleMode = "dispatcher"): string {
+  async assemble(_task: string, promptPaths?: { systemPrompt?: string; personality?: string }, mode: AssembleMode = "dispatcher"): Promise<string> {
     if (Date.now() - this.cacheTime > this.CACHE_TTL) { this.systemPromptCache = null; this.personalityCache = null; this.skillsCache = null; this.cacheTime = Date.now(); }
     const pathKey = JSON.stringify(promptPaths);
     if (pathKey !== this.cachedPromptPaths) {
@@ -87,9 +87,9 @@ export class AssemblerService {
 
     // Workers get identity + user model for personalization
     if (mode === "worker") {
-      const identityText = this.identity.toPromptText();
+      const identityText = await this.identity.toPromptText();
       if (identityText) sections.push(`## Identity\n${identityText}`);
-      const userText = this.userModel.toPromptText();
+      const userText = await this.userModel.toPromptText();
       if (userText) sections.push(`## User\n${userText}`);
     }
 

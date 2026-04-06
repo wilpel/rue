@@ -7,6 +7,15 @@ import { z } from "zod";
 const ConfigSchema = z.object({
   port: z.number().int().min(1).max(65535).default(18800),
   dataDir: z.string().default(path.join(os.homedir(), ".rue")),
+  supabase: z.object({
+    url: z.string().default(process.env.SUPABASE_URL ?? "https://fygjocohiiilreitnsnl.supabase.co"),
+    anonKey: z.string().default(process.env.SUPABASE_ANON_KEY ?? "sb_publishable_9dPhOltcFFz602ngRqwMnA_gOJtofVQ"),
+    serviceRoleKey: z.string().default(process.env.SUPABASE_SERVICE_ROLE_KEY ?? "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ5Z2pvY29oaWlpbHJlaXRuc25sIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3NDUxNDM5OCwiZXhwIjoyMDkwMDkwMzk4fQ.da3adSliu8Gkpo3T8gFxnorQMXu2tRLW2a_nSYvZKiU"),
+  }).default({
+    url: process.env.SUPABASE_URL ?? "https://fygjocohiiilreitnsnl.supabase.co",
+    anonKey: process.env.SUPABASE_ANON_KEY ?? "sb_publishable_9dPhOltcFFz602ngRqwMnA_gOJtofVQ",
+    serviceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY ?? "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ5Z2pvY29oaWlpbHJlaXRuc25sIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3NDUxNDM5OCwiZXhwIjoyMDkwMDkwMzk4fQ.da3adSliu8Gkpo3T8gFxnorQMXu2tRLW2a_nSYvZKiU",
+  }),
   lanes: z
     .object({
       main: z.number().int().min(1).default(1),
@@ -108,6 +117,7 @@ export class ConfigService {
 
   get port(): number { return this.config.port; }
   get dataDir(): string { return this.config.dataDir; }
+  get supabase(): RueConfig["supabase"] { return this.config.supabase; }
   get lanes(): RueConfig["lanes"] { return this.config.lanes; }
   get maxAgents(): number { return this.config.maxAgents; }
   get stall(): RueConfig["stall"] { return this.config.stall; }

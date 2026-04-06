@@ -1,6 +1,5 @@
 import { Injectable } from "@nestjs/common";
-import * as fs from "node:fs";
-import * as path from "node:path";
+import type { SupabaseService } from "../database/supabase.service.js";
 
 export interface UserProfile {
   name: string | null;
@@ -17,25 +16,33 @@ const DEFAULT_PROFILE: UserProfile = {
 
 @Injectable()
 export class UserModelService {
-  private profile: UserProfile;
-  private readonly filePath: string;
+  private profile: UserProfile = { ...DEFAULT_PROFILE, expertise: {}, preferences: [], workPatterns: [], currentProjects: [] };
+  private loaded = false;
 
-  constructor(dir: string) {
-    fs.mkdirSync(dir, { recursive: true });
-    this.filePath = path.join(dir, "user-profile.json");
-    this.profile = this.load();
+  constructor(private readonly db: SupabaseService) {}
+
+  private async ensureLoaded(): Promise<void> {
+    if (this.loaded) return;
+    const { data } = await this.db.from("user_profile").select("data").eq("id", 1).single();
+    if (data?.data) this.profile = data.data as UserProfile;
+    this.loaded = true;
   }
 
-  getProfile(): UserProfile {
+  async getProfile(): Promise<UserProfile> {
+    await this.ensureLoaded();
     return { ...this.profile, expertise: { ...this.profile.expertise }, preferences: [...this.profile.preferences], workPatterns: [...this.profile.workPatterns], currentProjects: [...this.profile.currentProjects] };
   }
 
   update(partial: Partial<UserProfile>): void { this.profile = { ...this.profile, ...partial }; }
   updateExpertise(area: string, level: string): void { this.profile.expertise = { ...this.profile.expertise, [area]: level }; }
   addPreference(preference: string): void { if (!this.profile.preferences.includes(preference)) this.profile.preferences = [...this.profile.preferences, preference]; }
-  save(): void { fs.writeFileSync(this.filePath, JSON.stringify(this.profile, null, 2), "utf-8"); }
 
-  toPromptText(): string {
+  async save(): Promise<void> {
+    await this.db.from("user_profile").upsert({ id: 1, data: this.profile });
+  }
+
+  async toPromptText(): Promise<string> {
+    await this.ensureLoaded();
     const hasData = this.profile.name !== null || Object.keys(this.profile.expertise).length > 0 || this.profile.preferences.length > 0 || this.profile.workPatterns.length > 0 || this.profile.currentProjects.length > 0;
     if (!hasData) return "User profile: not yet learned anything about the user.";
     const lines: string[] = ["# User profile"];
@@ -46,10 +53,5 @@ export class UserModelService {
     if (this.profile.currentProjects.length > 0) lines.push(`Current projects: ${this.profile.currentProjects.join(", ")}`);
     if (this.profile.communicationStyle) lines.push(`Communication style: ${this.profile.communicationStyle}`);
     return lines.join("\n");
-  }
-
-  private load(): UserProfile {
-    if (fs.existsSync(this.filePath)) { try { return JSON.parse(fs.readFileSync(this.filePath, "utf-8")) as UserProfile; } catch { /* fall through */ } }
-    return { ...DEFAULT_PROFILE, expertise: {}, preferences: [], workPatterns: [], currentProjects: [] };
   }
 }

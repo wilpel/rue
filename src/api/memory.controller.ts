@@ -17,43 +17,43 @@ export class MemoryController {
 
   @Post("kb")
   @HttpCode(200)
-  saveKb(@Body() body: { path: string; content: string; tags?: string[] }) {
+  async saveKb(@Body() body: { path: string; content: string; tags?: string[] }) {
     if (!body.path || !body.content) return { error: "path and content are required" };
-    this.kb.savePage(body.path, body.content, body.tags ?? []);
+    await this.kb.savePage(body.path, body.content, body.tags ?? []);
     this.bus.emit("memory:stored", { type: "kb", key: body.path });
     return { ok: true };
   }
 
   @Post("fact")
   @HttpCode(200)
-  saveFact(@Body() body: { key: string; content: string; tags?: string[] }) {
+  async saveFact(@Body() body: { key: string; content: string; tags?: string[] }) {
     if (!body.key || !body.content) return { error: "key and content are required" };
-    this.semantic.store(body.key, body.content, body.tags ?? []);
+    await this.semantic.store(body.key, body.content, body.tags ?? []);
     this.bus.emit("memory:stored", { type: "fact", key: body.key });
     return { ok: true };
   }
 
   @Post("identity")
   @HttpCode(200)
-  updateIdentity(@Body() body: { field: string; value: unknown }) {
+  async updateIdentity(@Body() body: { field: string; value: unknown }) {
     if (!body.field) return { error: "field is required" };
-    const state = this.identity.getState();
+    const state = await this.identity.getState();
     if (!(body.field in state)) return { error: `unknown field: ${body.field}` };
     const oldValue = state[body.field as keyof typeof state];
     this.identity.update({ [body.field]: body.value });
-    this.identity.save();
+    await this.identity.save();
     this.bus.emit("identity:updated", { field: body.field, oldValue, newValue: body.value });
     return { ok: true };
   }
 
   @Post("user")
   @HttpCode(200)
-  updateUser(@Body() body: { field: string; value: unknown }) {
+  async updateUser(@Body() body: { field: string; value: unknown }) {
     if (!body.field) return { error: "field is required" };
-    const profile = this.userModel.getProfile();
+    const profile = await this.userModel.getProfile();
     if (!(body.field in profile)) return { error: `unknown field: ${body.field}` };
     this.userModel.update({ [body.field]: body.value });
-    this.userModel.save();
+    await this.userModel.save();
     this.bus.emit("memory:stored", { type: "user", key: body.field });
     return { ok: true };
   }

@@ -1,10 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { Box, Text, useApp, useInput, useStdout } from "ink";
-import { MessageList } from "./MessageList.js";
-import { InputBar } from "./InputBar.js";
-import { StatusBar } from "./StatusBar.js";
-import { Sidebar, type EventEntry, type TaskInfo } from "./Sidebar.js";
-import { LoadingScreen } from "./LoadingScreen.js";
+import { ChatPanel } from "./ChatPanel.js";
+import { RightPanels, type EventEntry, type TaskInfo } from "./RightPanels.js";
 import { DaemonClient } from "../client.js";
 import { COLORS, LAYOUT } from "./theme.js";
 
@@ -37,11 +34,10 @@ export function App({ client }: AppProps) {
   const [totalCost, setTotalCost] = useState(0);
   const [events, setEvents] = useState<EventEntry[]>([]);
   const [tasks, setTasks] = useState<TaskInfo[]>([]);
-  const [usageHistory, setUsageHistory] = useState<Array<{ tokens: number; timestamp: number }>>([]);
+  const [, setUsageHistory] = useState<Array<{ tokens: number; timestamp: number }>>([]);
   const [, setTokensSinceLastSample] = useState(0);
   const [totalTokens, setTotalTokens] = useState(0);
   const [connectionState, setConnectionState] = useState<"connected" | "reconnecting" | "disconnected">("connected");
-  const [initialLoading, setInitialLoading] = useState(true);
 
   const agentTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
 
@@ -91,10 +87,10 @@ export function App({ client }: AppProps) {
           id: m.id,
           role: m.role as ChatMessage["role"],
           content: m.content,
-          timestamp: m.timestamp,
+          timestamp: m.timestamp ?? (m as Record<string, unknown>).createdAt as number ?? Date.now(),
         }));
       if (restored.length > 0) setMessages(restored);
-    }).catch(() => {}).finally(() => setInitialLoading(false));
+    }).catch(() => {});
   }, [client]);
 
   // Poll for active tasks + refresh on task events (skip while streaming)
@@ -269,65 +265,67 @@ export function App({ client }: AppProps) {
   }, [client, isLoading, agents]);
 
   const activeAgents = Array.from(agents.values());
-  const contentHeight = Math.max(LAYOUT.minContentHeight, termHeight - LAYOUT.chromeHeight);
-  const showSidebar = termWidth >= LAYOUT.sidebarBreakpoint;
-  const sidebarWidth = showSidebar ? Math.max(LAYOUT.minSidebarWidth, Math.floor(termWidth * LAYOUT.sidebarRatio)) : 0;
-  const messageWidth = termWidth - sidebarWidth;
+  const activeCount = activeAgents.filter(a => a.state === "spawned" || a.state === "running").length;
+  // Layout: header (1) + content = termHeight - 1
+  const contentHeight = Math.max(LAYOUT.minContentHeight, termHeight - 1);
+  const showPanels = termWidth >= 80;
+  const panelWidth = showPanels ? Math.max(28, Math.floor(termWidth * 0.28)) : 0;
+  const chatWidth = termWidth - panelWidth;
+
+  // Status label
+  const statusLabel = connectionState === "reconnecting" ? "reconnecting"
+    : connectionState === "disconnected" ? "disconnected"
+    : isLoading ? "working" : "ready";
+  const statusColor = connectionState === "reconnecting" ? COLORS.secondary
+    : connectionState === "disconnected" ? COLORS.urgent
+    : isLoading ? COLORS.secondary : COLORS.success;
 
   return (
     <Box flexDirection="column" width={termWidth} height={termHeight}>
-      {/* Top bar */}
-      <Box paddingX={2} justifyContent="space-between" width={termWidth}>
+      {/* Header — everything at a glance */}
+      <Box paddingX={1} justifyContent="space-between" width={termWidth}>
         <Box>
-          <Text color={COLORS.primary} bold> .-.  </Text>
           <Text color={COLORS.primary} bold>rue</Text>
-          <Text color={COLORS.veryDim}> | </Text>
-          <Text color={COLORS.dimmed}>your ai daemon</Text>
-          {connectionState === "reconnecting" && <Text color={COLORS.secondary}> reconnecting...</Text>}
-          {connectionState === "disconnected" && <Text color={COLORS.urgent}> disconnected</Text>}
-        </Box>
-        <Box>
-          <Text color={COLORS.dimmed}>v0.1.0</Text>
-        </Box>
-      </Box>
-
-      {/* Main content area — split pane */}
-      <Box flexDirection="row" height={contentHeight}>
-        {/* Left: message area */}
-        <Box flexDirection="column" width={messageWidth} height={contentHeight} overflow="hidden">
-          {initialLoading ? (
-            <LoadingScreen height={contentHeight} width={messageWidth} />
-          ) : (
-            <MessageList messages={messages} height={contentHeight} width={messageWidth} isLoading={isLoading} />
+          <Text color={COLORS.border}> │ </Text>
+          <Text color={statusColor}>{statusLabel}</Text>
+          {activeCount > 0 && (
+            <>
+              <Text color={COLORS.border}> │ </Text>
+              <Text color={COLORS.success}>{activeCount} agent{activeCount !== 1 ? "s" : ""}</Text>
+            </>
+          )}
+          {totalCost > 0 && (
+            <>
+              <Text color={COLORS.border}> │ </Text>
+              <Text color={COLORS.veryDim}>${totalCost.toFixed(2)}</Text>
+            </>
           )}
         </Box>
+        <Text color={COLORS.veryDim}>/help  ctrl+c</Text>
+      </Box>
 
-        {/* Right: sidebar with agents + events */}
-        {showSidebar && (
-          <Sidebar
+      {/* Main area: chat (with integrated input) + side panels */}
+      <Box flexDirection="row" height={contentHeight}>
+        <ChatPanel
+          messages={messages}
+          height={contentHeight}
+          width={chatWidth}
+          isLoading={isLoading}
+          onSubmit={handleSubmit}
+        />
+        {showPanels && (
+          <RightPanels
             agents={activeAgents}
             tasks={tasks}
             events={events}
-            usageHistory={usageHistory}
-            totalCost={totalCost}
             totalTokens={totalTokens}
+            totalCost={totalCost}
             height={contentHeight}
-            width={sidebarWidth}
+            width={panelWidth}
+            isLoading={isLoading}
           />
         )}
       </Box>
-
-      {/* Input bar */}
-      <InputBar onSubmit={handleSubmit} isLoading={isLoading} />
-
-      {/* Status bar — bottom of screen */}
-      <StatusBar
-        agentCount={activeAgents.filter(a => a.state === "spawned" || a.state === "running").length}
-        isLoading={isLoading}
-        totalCost={totalCost}
-        width={termWidth}
-        connectionState={connectionState}
-      />
     </Box>
   );
 }

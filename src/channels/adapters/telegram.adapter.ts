@@ -26,7 +26,7 @@ export class TelegramAdapter implements ChannelAdapter {
   }
 
   async start(): Promise<void> {
-    const token = this.store.getBotToken();
+    const token = await this.store.getBotToken();
     if (!token) {
       log.info("[telegram] No bot token — skipping");
       return;
@@ -52,7 +52,7 @@ export class TelegramAdapter implements ChannelAdapter {
   }
 
   async sendMessage(target: ChannelTarget, text: string, opts?: SendOptions): Promise<SentMessage> {
-    const token = this.store.getBotToken();
+    const token = await this.store.getBotToken();
     if (!token) throw new Error("[telegram] No token — cannot send");
 
     const chatId = target.chatId;
@@ -98,7 +98,7 @@ export class TelegramAdapter implements ChannelAdapter {
   }
 
   async sendReaction(target: ChannelTarget, messageId: string, emoji: string): Promise<void> {
-    const token = this.store.getBotToken();
+    const token = await this.store.getBotToken();
     if (!token) return;
     try {
       await fetch(`https://api.telegram.org/bot${token}/setMessageReaction`, {
@@ -132,32 +132,32 @@ export class TelegramAdapter implements ChannelAdapter {
       );
     });
 
-    this.bot.command("pair", (ctx) => {
+    this.bot.command("pair", async (ctx) => {
       const code = ctx.message.text.split(/\s+/)[1];
       if (!code) {
         ctx.reply("Usage: /pair <code>");
         return;
       }
-      if (this.store.isUserPaired(ctx.from.id)) {
+      if (await this.store.isUserPaired(ctx.from.id)) {
         ctx.reply("Already paired!");
         return;
       }
-      if (!this.store.validatePairingCode(code)) {
+      if (!await this.store.validatePairingCode(code)) {
         ctx.reply("Invalid or expired code.");
         return;
       }
-      this.store.addPairedUser(ctx.from.id, ctx.from.username);
+      await this.store.addPairedUser(ctx.from.id, ctx.from.username);
       ctx.reply("Paired! Send me messages and I'll respond as Rue.");
     });
 
-    this.bot.command("unpair", (ctx) => {
-      if (this.store.removePairedUser(ctx.from.id)) ctx.reply("Unpaired.");
+    this.bot.command("unpair", async (ctx) => {
+      if (await this.store.removePairedUser(ctx.from.id)) ctx.reply("Unpaired.");
       else ctx.reply("You're not paired.");
     });
 
     this.bot.on("text", async (ctx) => {
       const telegramId = ctx.from.id;
-      if (!this.store.isUserPaired(telegramId)) {
+      if (!await this.store.isUserPaired(telegramId)) {
         ctx.reply("Not paired. Run `rue telegram pair` first, then /pair <code>.");
         return;
       }

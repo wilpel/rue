@@ -78,12 +78,12 @@ export class DaemonGateway implements OnGatewayConnection, OnGatewayDisconnect, 
         if (cid && !cid.startsWith("cli-") && cid !== "0" && cid !== "undefined") return;
 
         // Store the delegate result in message history
-        this.messages.append({ role: "channel", content: payload.output, metadata: { tag: `AGENT_DELEGATE_${payload.agentId}` } });
+        await this.messages.append({ role: "channel", content: payload.output, metadata: { tag: `AGENT_DELEGATE_${payload.agentId}` } });
 
         // Re-run the main agent with the delegate result as context
-        const history = this.messages.compactHistory();
+        const history = await this.messages.compactHistory();
 
-        const systemPrompt = this.assembler.assemble("", undefined, "followup");
+        const systemPrompt = await this.assembler.assemble("", undefined, "followup");
         const prompt = `A background delegate agent just completed and posted its result to your conversation.\n\nHere is the recent conversation:\n\n${history}\n\n---\nRespond to the user with the delegate's result. Summarize or format it as appropriate.`;
 
         const agentId = `gateway-followup-${Date.now()}`;
@@ -111,7 +111,7 @@ export class DaemonGateway implements OnGatewayConnection, OnGatewayDisconnect, 
           const result = await proc.run();
           const cleaned = result.output.replace(/\[no_?response\]/gi, "").trim();
           if (cleaned) {
-            this.messages.append({ role: "assistant", content: cleaned });
+            await this.messages.append({ role: "assistant", content: cleaned });
           }
 
           this.bus.emit("agent:completed", { id: agentId, result: cleaned.slice(0, 100), cost: result.cost, inputTokens: result.usage?.inputTokens, outputTokens: result.usage?.outputTokens });
@@ -140,11 +140,11 @@ export class DaemonGateway implements OnGatewayConnection, OnGatewayDisconnect, 
         const cid = String(payload.chatId);
         if (cid && !cid.startsWith("cli-") && cid !== "0" && cid !== "undefined") return;
 
-        this.messages.append({ role: "channel", content: `[Question from delegate ${payload.agentId}]: ${payload.question}`, metadata: { tag: "DELEGATE_QUESTION" } });
+        await this.messages.append({ role: "channel", content: `[Question from delegate ${payload.agentId}]: ${payload.question}`, metadata: { tag: "DELEGATE_QUESTION" } });
 
-        const history = this.messages.compactHistory();
+        const history = await this.messages.compactHistory();
 
-        const systemPrompt = this.assembler.assemble("", undefined, "followup");
+        const systemPrompt = await this.assembler.assemble("", undefined, "followup");
         const prompt = `A background delegate agent (${payload.agentId}) has paused and is asking you a question:\n\n"${payload.question}"\n\nHere is the recent conversation for context:\n\n${history}\n\n---\nAnswer the delegate's question. Your response will be sent directly back to the delegate agent so it can continue its work. Be concise and direct.`;
 
         const followupId = `gateway-answer-${Date.now()}`;
@@ -174,7 +174,7 @@ export class DaemonGateway implements OnGatewayConnection, OnGatewayDisconnect, 
           this.delegate.postAnswer(payload.agentId, cleaned || "No answer available");
 
           if (cleaned) {
-            this.messages.append({ role: "assistant", content: cleaned });
+            await this.messages.append({ role: "assistant", content: cleaned });
             if (ws.readyState === ws.OPEN) ws.send(serializeDaemonFrame({ type: "notify", severity: "info", title: "Delegate answer", body: cleaned }));
           }
 
@@ -192,9 +192,9 @@ export class DaemonGateway implements OnGatewayConnection, OnGatewayDisconnect, 
         if (ws.readyState !== ws.OPEN) return;
         if (payload.status !== "triggered") return;
 
-        const history = this.messages.compactHistory();
+        const history = await this.messages.compactHistory();
 
-        const systemPrompt = this.assembler.assemble("", undefined, "dispatcher");
+        const systemPrompt = await this.assembler.assemble("", undefined, "dispatcher");
         const prompt = `A scheduled event just triggered. Here is the recent conversation including the event:\n\n${history}\n\n---\nRespond to the scheduled event. If it requires action, delegate it. If it's a reminder, inform the user.`;
 
         const agentId = `gateway-schedule-${Date.now()}`;
@@ -221,7 +221,7 @@ export class DaemonGateway implements OnGatewayConnection, OnGatewayDisconnect, 
           const cleaned = result.output.replace(/\[no_?response\]/gi, "").trim();
 
           if (cleaned) {
-            this.messages.append({ role: "assistant", content: cleaned });
+            await this.messages.append({ role: "assistant", content: cleaned });
             if (ws.readyState === ws.OPEN) ws.send(serializeDaemonFrame({ type: "notify", severity: "info", title: "Scheduled event", body: cleaned }));
           }
 
@@ -279,9 +279,9 @@ export class DaemonGateway implements OnGatewayConnection, OnGatewayDisconnect, 
       case "ask": {
         const text = frame.args.text as string;
         log.info(`[gateway] ask: "${text.slice(0, 60)}"`);
-        const systemPrompt = this.assembler.assemble(text, undefined, "dispatcher");
+        const systemPrompt = await this.assembler.assemble(text, undefined, "dispatcher");
 
-        this.messages.append({ role: "user", content: text });
+        await this.messages.append({ role: "user", content: text });
 
         // Emit agent event so sidebar sees activity
         const agentId = `gateway-${Date.now()}`;
@@ -324,7 +324,7 @@ export class DaemonGateway implements OnGatewayConnection, OnGatewayDisconnect, 
 
           const cleanedText = result.output.replace(/\[no_?response\]/gi, "").trim();
           if (cleanedText) {
-            this.messages.append({ role: "assistant", content: cleanedText });
+            await this.messages.append({ role: "assistant", content: cleanedText });
           }
 
           this.bus.emit("agent:completed", { id: agentId, result: cleanedText.slice(0, 100), cost: result.cost, inputTokens: result.usage?.inputTokens, outputTokens: result.usage?.outputTokens });
@@ -348,7 +348,7 @@ export class DaemonGateway implements OnGatewayConnection, OnGatewayDisconnect, 
 
       case "history": {
         const limit = (frame.args.limit as number) ?? 20;
-        const msgs = this.messages.recent(limit);
+        const msgs = await this.messages.recent(limit);
         send({ type: "result", id: frame.id, data: { messages: msgs } });
         break;
       }

@@ -14,6 +14,58 @@ function fg(hex: string): string {
 
 const RST = "\x1b[0m";
 
+const THINKING_FRAMES = [
+  [
+    "    .  \u00b7  .    ",
+    "  \u00b7  .    .  \u00b7",
+    " .    \u25e6    .  ",
+    "  \u00b7  .    .  \u00b7",
+    "    .  \u00b7  .    ",
+  ],
+  [
+    "   .   \u00b7   .   ",
+    " \u00b7   .    .   \u00b7",
+    ".     \u25cf     .  ",
+    " \u00b7   .    .   \u00b7",
+    "   .   \u00b7   .   ",
+  ],
+  [
+    "  .    \u00b7    .  ",
+    "\u00b7    .    .    ",
+    "      \u25c9       ",
+    "\u00b7    .    .    ",
+    "  .    \u00b7    .  ",
+  ],
+  [
+    "   .   \u00b7   .   ",
+    " \u00b7   .    .   \u00b7",
+    ".     \u25cf     .  ",
+    " \u00b7   .    .   \u00b7",
+    "   .   \u00b7   .   ",
+  ],
+];
+
+function ThinkingIndicator() {
+  const [frame, setFrame] = useState(0);
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setFrame((prev) => (prev + 1) % THINKING_FRAMES.length);
+    }, 250);
+    return () => clearInterval(timer);
+  }, []);
+
+  const art = THINKING_FRAMES[frame];
+
+  return (
+    <Box flexDirection="column" paddingX={3} paddingY={1}>
+      {art.map((line, i) => (
+        <Text key={i} color={COLORS.primary}>{line}</Text>
+      ))}
+    </Box>
+  );
+}
+
 interface MessageListProps {
   messages: ChatMessage[];
   height: number;
@@ -24,6 +76,10 @@ interface MessageListProps {
 export function MessageList({ messages, height, width, isLoading }: MessageListProps) {
   const [scrollOffset, setScrollOffset] = useState(0);
 
+  const isThinking = isLoading && !messages.some(m => m.isStreaming && m.content);
+  // Reserve lines for the thinking animation (5 art lines + 2 padding)
+  const thinkingHeight = isThinking ? 7 : 0;
+
   // Render all messages to lines
   const renderedLines = useMemo(() => {
     if (messages.length === 0) return [];
@@ -31,15 +87,11 @@ export function MessageList({ messages, height, width, isLoading }: MessageListP
     for (const msg of messages) {
       lines.push(...renderMessage(msg, width));
     }
-    if (isLoading && !messages.some(m => m.isStreaming && m.content)) {
-      lines.push("");
-      lines.push(`  ${fg(COLORS.quoteText)}⠋ thinking...${RST}`);
-    }
     return lines;
-  }, [messages, width, isLoading]);
+  }, [messages, width]);
 
   // Auto-scroll to bottom on new content
-  const displayHeight = height - 1;
+  const displayHeight = height - 1 - thinkingHeight;
   useEffect(() => {
     const maxOffset = Math.max(0, renderedLines.length - displayHeight);
     setScrollOffset(maxOffset);
@@ -83,8 +135,10 @@ export function MessageList({ messages, height, width, isLoading }: MessageListP
           <Text key={scrollOffset + i} wrap="truncate">{line}</Text>
         ))}
       </Box>
+      {/* Animated thinking indicator */}
+      {isThinking && <ThinkingIndicator />}
       {/* Scroll indicator */}
-      {canScroll && !atBottom && (
+      {canScroll && !atBottom && !isThinking && (
         <Box justifyContent="flex-end" paddingRight={2}>
           <Text color={COLORS.veryDim}>↓ more</Text>
         </Box>
@@ -134,8 +188,11 @@ function renderMessage(msg: ChatMessage, _width: number): string[] {
 
     case "assistant": {
       lines.push(divider);
+      // No header when thinking — the animation speaks for itself
       const thinking = msg.isStreaming && !msg.content;
-      lines.push(`  \x1b[1m${fg(COLORS.primary)}> rue${RST} ${fg(COLORS.dimmed)}${time}${RST}${thinking ? ` ${fg(COLORS.primary)}⠋${RST}` : ""}`);
+      if (!thinking) {
+        lines.push(`  \x1b[1m${fg(COLORS.primary)}> rue${RST} ${fg(COLORS.dimmed)}${time}${RST}`);
+      }
       if (msg.content) {
         const rendered = renderMarkdown(msg.content, contentWidth);
         for (const line of rendered.split("\n")) {

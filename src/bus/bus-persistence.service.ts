@@ -1,7 +1,5 @@
 import { Injectable, Inject } from "@nestjs/common";
-import { DatabaseService } from "../database/database.service.js";
-import { events } from "../database/schema.js";
-import { desc } from "drizzle-orm";
+import { SupabaseService } from "../database/supabase.service.js";
 
 export interface PersistedEvent {
   id: number;
@@ -12,23 +10,21 @@ export interface PersistedEvent {
 
 @Injectable()
 export class BusPersistenceService {
-  constructor(@Inject(DatabaseService) private readonly db: DatabaseService) {}
+  constructor(@Inject(SupabaseService) private readonly db: SupabaseService) {}
 
-  append(channel: string, payload: unknown): void {
-    this.db.getDrizzle().insert(events).values({
+  async append(channel: string, payload: unknown): Promise<void> {
+    await this.db.from("events").insert({
       channel,
-      payload: JSON.stringify(payload),
-      createdAt: Date.now(),
-    }).run();
+      payload,
+      created_at: Date.now(),
+    });
   }
 
-  readTail(count: number): PersistedEvent[] {
-    const rows = this.db.getDrizzle()
-      .select()
-      .from(events)
-      .orderBy(desc(events.id))
-      .limit(count)
-      .all();
-    return rows.reverse() as PersistedEvent[];
+  async readTail(count: number): Promise<PersistedEvent[]> {
+    const { data } = await this.db.from("events")
+      .select("*")
+      .order("id", { ascending: false })
+      .limit(count);
+    return ((data ?? []) as unknown as PersistedEvent[]).reverse();
   }
 }
