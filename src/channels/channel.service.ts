@@ -154,6 +154,8 @@ export class ChannelService implements OnModuleInit {
     const prompt = `Here is the recent conversation on your channel:\n\n${history}\n\n---${newMessageLine}\nRespond to the user's latest message. Output text = sent to Telegram. Use Bash to run skills if needed.`;
 
     log.info(`[channel] Triggering agent for chat ${chatId} (route: ${route.agentId})`);
+    log.info(`[channel] Prompt for agent:\n${prompt.slice(0, 500)}`);
+    log.info(`[channel] System prompt length: ${systemPrompt.length}, tools: ${route.tools.join(",")}, model: ${this.primaryModel}`);
 
     // Don't resume sessions — fresh context with explicit history prevents the agent
     // from thinking it already responded to messages it sees in the resumed session
