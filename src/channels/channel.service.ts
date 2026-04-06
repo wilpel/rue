@@ -22,9 +22,6 @@ export class ChannelService implements OnModuleInit {
   private processing = new Set<string>();
   private queued = new Map<string, string>(); // chatId -> channelId
 
-  private lastSessionId: string | undefined;
-  private lastSessionTime = 0;
-
   private readonly primaryModel: string;
 
   constructor(
@@ -144,19 +141,26 @@ export class ChannelService implements OnModuleInit {
       personality: route.personalityPath,
     }, "dispatcher");
 
-    const prompt = `Here is the recent conversation on your channel:\n\n${history}\n\n---\nYour turn. Respond to the latest messages. Use Bash to run skills (delegate, telegram react, kb, etc). To send a message to the user, just output text — it will be sent to Telegram automatically.`;
+    // Get the latest user message to highlight what needs a response
+    const recentMsgs = this.messages.recentByChatId(chatId, 5);
+    const lastUserMsg = [...recentMsgs].reverse().find(m => {
+      const tag = (m.metadata as Record<string, unknown>)?.tag as string | undefined;
+      return tag?.startsWith("USER");
+    });
+    const newMessageLine = lastUserMsg
+      ? `\n\nNEW MESSAGE from user: "${lastUserMsg.content}"\n`
+      : "";
+
+    const prompt = `Here is the recent conversation on your channel:\n\n${history}\n\n---${newMessageLine}\nRespond to the user's latest message. Output text = sent to Telegram. Use Bash to run skills if needed.`;
 
     log.info(`[channel] Triggering agent for chat ${chatId} (route: ${route.agentId})`);
 
-    const resumeId = Date.now() - this.lastSessionTime < 1800_000 ? this.lastSessionId : undefined;
+    // Don't resume sessions — fresh context with explicit history prevents the agent
+    // from thinking it already responded to messages it sees in the resumed session
+    const resumeId = undefined;
 
     try {
-      const { output, sessionId } = await this.runClaudeQuery(prompt, systemPrompt, route.tools, resumeId);
-
-      if (sessionId) {
-        this.lastSessionId = sessionId;
-        this.lastSessionTime = Date.now();
-      }
+      const { output } = await this.runClaudeQuery(prompt, systemPrompt, route.tools, resumeId);
 
       const cleaned = output.replace(/\[no_?response\]/gi, "").trim();
       if (cleaned) {
@@ -177,11 +181,6 @@ export class ChannelService implements OnModuleInit {
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : String(err);
       log.error(`[channel] Claude query failed: ${errMsg}`);
-
-      if (resumeId) {
-        this.lastSessionId = undefined;
-        this.lastSessionTime = 0;
-      }
 
       let userMessage: string;
       if (errMsg.includes("abort") || errMsg.includes("timeout")) {
