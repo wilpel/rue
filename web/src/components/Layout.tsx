@@ -1,18 +1,25 @@
 import { Outlet, NavLink, Link, useLocation } from "react-router-dom";
-import { FolderKanban, Bot, Settings, PanelLeftClose, PanelLeft, Plus, ChevronDown, LayoutDashboard, MessageCircle, KeyRound } from "lucide-react";
+import { FolderKanban, Bot, Settings, PanelLeftClose, PanelLeft, Plus, ChevronDown, LayoutDashboard, MessageCircle, KeyRound, BookOpen, Brain, LogOut } from "lucide-react";
 import { useState, useEffect } from "react";
-import { api } from "../lib/api";
+import { useAuth } from "../lib/auth";
+import { supabase } from "../lib/supabase";
 
 export function Layout() {
   const [collapsed, setCollapsed] = useState(false);
   const [conversations, setConversations] = useState<Array<{ content: string }>>([]);
   const [showAllChats, setShowAllChats] = useState(false);
+  const { user, signOut } = useAuth();
   const location = useLocation();
 
   useEffect(() => {
-    api.history(15).then(r => {
-      setConversations(r.messages.filter(m => m.role === "user").reverse().slice(0, 8));
-    }).catch(() => {});
+    supabase.from("messages").select("content").eq("role", "channel").order("created_at", { ascending: false }).limit(15)
+      .then(({ data }) => {
+        const userMsgs = (data ?? []).filter((m: Record<string, unknown>) => {
+          const content = m.content as string;
+          return content && content.length > 5;
+        }).slice(0, 8);
+        setConversations(userMsgs as Array<{ content: string }>);
+      });
   }, [location.pathname]);
 
   const visibleChats = showAllChats ? conversations : conversations.slice(0, 3);
@@ -35,7 +42,7 @@ export function Layout() {
 
         {/* New chat */}
         <div className="p-2 pb-0">
-          <Link to="/" className={`flex items-center gap-2 ${collapsed ? "justify-center" : ""} px-3 py-2 rounded-lg border border-line hover:bg-hover text-secondary hover:text-text transition-colors text-[13px]`}>
+          <Link to="/chat" className={`flex items-center gap-2 ${collapsed ? "justify-center" : ""} px-3 py-2 rounded-lg border border-line hover:bg-hover text-secondary hover:text-text transition-colors text-[13px]`}>
             <Plus size={14} />
             {!collapsed && "New chat"}
           </Link>
@@ -47,6 +54,8 @@ export function Layout() {
           <SidebarLink to="/chat" icon={MessageCircle} label="Chat" collapsed={collapsed} />
           <SidebarLink to="/projects" icon={FolderKanban} label="Projects" collapsed={collapsed} />
           <SidebarLink to="/agents" icon={Bot} label="Agents" collapsed={collapsed} />
+          <SidebarLink to="/knowledge" icon={BookOpen} label="Knowledge" collapsed={collapsed} />
+          <SidebarLink to="/memory" icon={Brain} label="Memory" collapsed={collapsed} />
           <SidebarLink to="/secrets" icon={KeyRound} label="Secrets" collapsed={collapsed} />
           <SidebarLink to="/settings" icon={Settings} label="Settings" collapsed={collapsed} />
         </div>
@@ -71,6 +80,22 @@ export function Layout() {
             )}
           </div>
         )}
+
+        {/* User footer */}
+        <div className="border-t border-line p-2 shrink-0">
+          {!collapsed ? (
+            <div className="flex items-center justify-between px-2 py-1.5">
+              <span className="text-xs text-secondary truncate">{user?.email ?? "—"}</span>
+              <button onClick={signOut} className="p-1 text-muted hover:text-red transition-colors" title="Sign out">
+                <LogOut size={14} />
+              </button>
+            </div>
+          ) : (
+            <button onClick={signOut} className="w-full flex justify-center p-1.5 text-muted hover:text-red transition-colors" title="Sign out">
+              <LogOut size={14} />
+            </button>
+          )}
+        </div>
       </div>
 
       <main className="flex-1 overflow-hidden">
@@ -80,7 +105,7 @@ export function Layout() {
   );
 }
 
-function SidebarLink({ to, icon: Icon, label, collapsed, end }: { to: string; icon: React.ComponentType<{size?: number}>; label: string; collapsed: boolean; end?: boolean }) {
+function SidebarLink({ to, icon: Icon, label, collapsed, end }: { to: string; icon: React.ComponentType<{ size?: number }>; label: string; collapsed: boolean; end?: boolean }) {
   return (
     <NavLink to={to} end={end} className={({ isActive }) =>
       `flex items-center gap-3 ${collapsed ? "justify-center" : ""} px-3 py-2 rounded-lg text-[13px] transition-colors ${
