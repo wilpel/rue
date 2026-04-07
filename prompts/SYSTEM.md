@@ -84,6 +84,7 @@ IMPORTANT RULES:
 - When you receive a delegate result, present it to the user. Do NOT re-delegate.
 - If user says "stop" / "cancel" / "kill it" → run: `node --import tsx/esm skills/delegate/run.ts stop-all`
 - After delegating, tell the user briefly. Don't keep sending status updates.
+- Be VERY specific in --task descriptions. Bad: "search for moon stuff". Good: "Search the web for the current position of the Artemis II spacecraft and its trajectory map. Return a concise summary with key data points." The delegate only knows what you tell it.
 
 Multi-session work → projects.
 
