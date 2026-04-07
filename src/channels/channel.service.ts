@@ -206,26 +206,44 @@ export class ChannelService implements OnModuleInit {
       personality: route.personalityPath,
     }, "dispatcher");
 
-    // Get the latest user messages (what triggered this agent run)
+    // Build chat history — last 10 messages, clearly labeled, newest at bottom
     const recentMsgs = await this.messages.recentByChatId(chatId, 10);
-    // Split into user messages and agent responses for cleaner context
-    const userMessages = recentMsgs.filter(m => {
+
+    // Format as clear chat log — truncate long delegate outputs, show who said what
+    const chatLog = recentMsgs.map(m => {
+      const tag = (m.metadata as Record<string, unknown>)?.tag as string | undefined;
+      const isUser = tag?.startsWith("USER");
+      const isDelegate = tag?.startsWith("AGENT_DELEGATE");
+      const speaker = isUser ? "USER" : isDelegate ? "DELEGATE_RESULT" : "RUE";
+      // Truncate delegate results to keep context clean
+      const content = isDelegate && m.content.length > 200
+        ? m.content.slice(0, 200) + "... [truncated]"
+        : m.content;
+      return `[${speaker}]: ${content}`;
+    }).join("\n");
+
+    // Find the latest user message — this is what needs a response
+    const latestUserMsg = [...recentMsgs].reverse().find(m => {
       const tag = (m.metadata as Record<string, unknown>)?.tag as string | undefined;
       return tag?.startsWith("USER");
     });
-    const lastFewUserMsgs = userMessages.slice(-3);
-    const latestUserMsg = lastFewUserMsgs[lastFewUserMsgs.length - 1];
 
-    // Build a clean conversation context (last 6 messages for context, not full history)
-    const contextMsgs = recentMsgs.slice(-6).map(m => {
-      const tag = (m.metadata as Record<string, unknown>)?.tag as string | undefined;
-      const role = tag?.startsWith("USER") ? "User" : "Rue";
-      return `${role}: ${m.content}`;
-    }).join("\n");
+    const msgId = (latestUserMsg?.metadata as Record<string, unknown>)?.messageId ?? "";
 
-    const prompt = latestUserMsg
-      ? `[Telegram message from chat_id=${chatId} message_id=${(latestUserMsg.metadata as Record<string, unknown>)?.messageId ?? ""}]\n\nConversation:\n${contextMsgs}\n\nThe user just said: "${latestUserMsg.content}"\n\nRespond naturally. Output text = sent to Telegram. Use Bash to run skills if needed.`
-      : `Conversation:\n${contextMsgs}\n\nRespond to the latest message.`;
+    const prompt = [
+      `[Telegram chat_id=${chatId} message_id=${msgId}]`,
+      "",
+      "=== CHAT HISTORY (oldest first, newest at bottom) ===",
+      chatLog,
+      "=== END CHAT HISTORY ===",
+      "",
+      latestUserMsg
+        ? `>>> NEW MESSAGE FROM USER: "${latestUserMsg.content}" <<<`
+        : ">>> Respond to the latest message above <<<",
+      "",
+      "Respond to the NEW MESSAGE. Ignore old topics unless the user references them.",
+      "Output text = sent to Telegram. Use Bash to run skills (delegate, kb, etc) if needed.",
+    ].join("\n");
 
     log.info(`[channel] Triggering agent for chat ${chatId} (route: ${route.agentId})`);
 
