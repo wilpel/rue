@@ -1,32 +1,32 @@
 #!/usr/bin/env tsx
-import * as fs from "node:fs";
-import * as path from "node:path";
+/**
+ * Memory skill — store/search facts and daily notes via Rue daemon API (Supabase-backed).
+ */
 import * as os from "node:os";
-import Database from "better-sqlite3";
+import * as path from "node:path";
+import * as fs from "node:fs";
 
-const MEMORY_DIR = path.join(os.homedir(), ".rue", "memory");
-const DAILY_DIR = path.join(MEMORY_DIR, "daily");
-const MEMORY_FILE = path.join(MEMORY_DIR, "MEMORY.md");
-const DB_PATH = path.join(MEMORY_DIR, "semantic", "knowledge.sqlite");
-
-fs.mkdirSync(DAILY_DIR, { recursive: true });
-fs.mkdirSync(path.join(MEMORY_DIR, "semantic"), { recursive: true });
-
-// Ensure MEMORY.md exists
-if (!fs.existsSync(MEMORY_FILE)) {
-  fs.writeFileSync(MEMORY_FILE, "# Memory\n\nLong-term facts and knowledge.\n");
+function loadConfig(): { port: number } {
+  const configPath = path.join(os.homedir(), ".rue", "config.json");
+  if (fs.existsSync(configPath)) {
+    const raw = JSON.parse(fs.readFileSync(configPath, "utf-8"));
+    return { port: raw.port ?? 18800 };
+  }
+  return { port: 18800 };
 }
 
-// Ensure DB exists
-const db = new Database(DB_PATH);
-db.pragma("journal_mode = WAL");
-db.exec(`CREATE TABLE IF NOT EXISTS facts (
-  key TEXT PRIMARY KEY,
-  content TEXT NOT NULL,
-  tags TEXT NOT NULL DEFAULT '[]',
-  created_at INTEGER NOT NULL,
-  updated_at INTEGER NOT NULL
-)`);
+const config = loadConfig();
+const BASE = `http://127.0.0.1:${config.port}/api`;
+
+async function post(url: string, body: Record<string, unknown>): Promise<Record<string, unknown>> {
+  const res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  return await res.json() as Record<string, unknown>;
+}
+
+async function get(url: string): Promise<Record<string, unknown>> {
+  const res = await fetch(url);
+  return await res.json() as Record<string, unknown>;
+}
 
 const args = process.argv.slice(2);
 const command = args[0];
@@ -36,187 +36,90 @@ function getArg(name: string): string | undefined {
   return idx >= 0 && idx + 1 < args.length ? args[idx + 1] : undefined;
 }
 
-function today(): string {
-  return new Date().toISOString().split("T")[0];
-}
-
 switch (command) {
   case "remember": {
     const fact = getArg("fact");
     const tags = getArg("tags") ?? "";
-    if (!fact) { console.error("Usage: run.ts remember --fact <text> [--tags <comma,separated>]"); process.exit(1); }
-
-    const key = `fact-${Date.now().toString(36)}`;
+    if (!fact) { console.error("Usage: memory remember --fact <text> [--tags <comma,separated>]"); process.exit(1); }
     const tagArr = tags ? tags.split(",").map(t => t.trim()) : [];
-    const now = Date.now();
-
-    // Store in SQLite for search
-    db.prepare("INSERT OR REPLACE INTO facts (key, content, tags, created_at, updated_at) VALUES (?, ?, ?, ?, ?)")
-      .run(key, fact, JSON.stringify(tagArr), now, now);
-
-    // Append to MEMORY.md
-    const entry = `\n- ${fact}${tagArr.length ? ` _(${tagArr.join(", ")})_` : ""}\n`;
-    fs.appendFileSync(MEMORY_FILE, entry);
-
-    console.log(`Remembered: ${fact}`);
-    console.log(`  Key: ${key}`);
-    if (tagArr.length) console.log(`  Tags: ${tagArr.join(", ")}`);
+    const key = `fact-${Date.now().toString(36)}`;
+    const data = await post(`${BASE}/memory/fact`, { key, content: fact, tags: tagArr });
+    if (data.ok) {
+      console.log(`Remembered: ${fact}`);
+      console.log(`  Key: ${key}`);
+      if (tagArr.length) console.log(`  Tags: ${tagArr.join(", ")}`);
+    } else {
+      console.error(`Failed: ${data.error}`);
+    }
     break;
   }
 
   case "note": {
     const text = getArg("text");
-    if (!text) { console.error("Usage: run.ts note --text <text>"); process.exit(1); }
-
-    const dailyFile = path.join(DAILY_DIR, `${today()}.md`);
+    if (!text) { console.error("Usage: memory note --text <text>"); process.exit(1); }
+    const today = new Date().toISOString().split("T")[0];
     const time = new Date().toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false });
-
-    if (!fs.existsSync(dailyFile)) {
-      fs.writeFileSync(dailyFile, `# Notes — ${today()}\n`);
-    }
-
-    fs.appendFileSync(dailyFile, `\n- **${time}** ${text}\n`);
-    console.log(`Note added to ${today()}.md`);
+    const data = await post(`${BASE}/memory/kb`, {
+      path: `daily/${today}`,
+      content: `- **${time}** ${text}`,
+      tags: ["daily", "note"],
+    });
+    if (data.ok) console.log(`Note added to daily/${today}`);
+    else console.error(`Failed: ${data.error}`);
     break;
   }
 
   case "search": {
     const query = getArg("query");
-    if (!query) { console.error("Usage: run.ts search --query <text>"); process.exit(1); }
-
+    if (!query) { console.error("Usage: memory search --query <text>"); process.exit(1); }
+    // Search via the daemon API — query the DB endpoint
+    const data = await post(`${BASE}/db/query`, { table: "facts", select: "key,content,tags", limit: 20 });
+    const rows = (data.rows ?? []) as Array<{ key: string; content: string; tags: string[] }>;
     const words = query.toLowerCase().split(/\s+/).filter(w => w.length > 2);
-    if (words.length === 0) { console.log("No results."); break; }
-
-    // Search SQLite facts
-    const allFacts = db.prepare("SELECT * FROM facts").all() as Array<{
-      key: string; content: string; tags: string; created_at: number; updated_at: number;
-    }>;
-
-    const results = allFacts
-      .map(f => {
-        const lower = f.content.toLowerCase() + " " + f.tags.toLowerCase();
+    const results = rows
+      .map(r => {
+        const lower = r.content.toLowerCase() + " " + (r.tags ?? []).join(" ").toLowerCase();
         let score = 0;
         for (const w of words) { if (lower.includes(w)) score++; }
-        return { ...f, score };
+        return { ...r, score };
       })
       .filter(r => r.score > 0)
       .sort((a, b) => b.score - a.score)
       .slice(0, 10);
 
-    // Also search MEMORY.md
-    const memContent = fs.readFileSync(MEMORY_FILE, "utf-8");
-    const memLines = memContent.split("\n").filter(l => l.trim().startsWith("- "));
-    const memResults = memLines
-      .map(line => {
-        const lower = line.toLowerCase();
-        let score = 0;
-        for (const w of words) { if (lower.includes(w)) score++; }
-        return { line: line.trim(), score };
-      })
-      .filter(r => r.score > 0)
-      .sort((a, b) => b.score - a.score)
-      .slice(0, 5);
-
-    // Also search recent daily notes
-    const dailyFiles = fs.readdirSync(DAILY_DIR).filter(f => f.endsWith(".md")).sort().reverse().slice(0, 7);
-    const dailyResults: Array<{ file: string; line: string; score: number }> = [];
-    for (const file of dailyFiles) {
-      const content = fs.readFileSync(path.join(DAILY_DIR, file), "utf-8");
-      const lines = content.split("\n").filter(l => l.trim().startsWith("- "));
-      for (const line of lines) {
-        const lower = line.toLowerCase();
-        let score = 0;
-        for (const w of words) { if (lower.includes(w)) score++; }
-        if (score > 0) dailyResults.push({ file, line: line.trim(), score });
-      }
-    }
-    dailyResults.sort((a, b) => b.score - a.score);
-
-    if (results.length === 0 && memResults.length === 0 && dailyResults.length === 0) {
-      console.log("No results found.");
-      break;
-    }
-
-    if (results.length > 0) {
-      console.log("Facts:");
-      for (const r of results) {
-        console.log(`  [${r.key}] ${r.content}`);
-      }
-    }
-    if (memResults.length > 0) {
-      console.log("\nFrom MEMORY.md:");
-      for (const r of memResults) {
-        console.log(`  ${r.line}`);
-      }
-    }
-    if (dailyResults.length > 0) {
-      console.log("\nFrom daily notes:");
-      for (const r of dailyResults.slice(0, 5)) {
-        console.log(`  [${r.file}] ${r.line}`);
-      }
-    }
-    break;
-  }
-
-  case "read": {
-    console.log(fs.readFileSync(MEMORY_FILE, "utf-8"));
-    break;
-  }
-
-  case "today": {
-    const dailyFile = path.join(DAILY_DIR, `${today()}.md`);
-    if (!fs.existsSync(dailyFile)) {
-      console.log("No notes for today.");
-    } else {
-      console.log(fs.readFileSync(dailyFile, "utf-8"));
-    }
-    break;
-  }
-
-  case "day": {
-    const date = getArg("date");
-    if (!date) { console.error("Usage: run.ts day --date YYYY-MM-DD"); process.exit(1); }
-    const dailyFile = path.join(DAILY_DIR, `${date}.md`);
-    if (!fs.existsSync(dailyFile)) {
-      console.log(`No notes for ${date}.`);
-    } else {
-      console.log(fs.readFileSync(dailyFile, "utf-8"));
+    if (results.length === 0) { console.log("No results found."); break; }
+    console.log(`${results.length} result(s):\n`);
+    for (const r of results) {
+      console.log(`  [${r.key}] ${r.content}`);
     }
     break;
   }
 
   case "forget": {
     const key = getArg("key");
-    if (!key) { console.error("Usage: run.ts forget --key <key>"); process.exit(1); }
-    const result = db.prepare("DELETE FROM facts WHERE key = ?").run(key);
-    console.log(result.changes ? `Forgot: ${key}` : `Not found: ${key}`);
+    if (!key) { console.error("Usage: memory forget --key <key>"); process.exit(1); }
+    const data = await post(`${BASE}/db/exec`, { table: "facts", operation: "delete", filters: { key } });
+    console.log(data.ok ? `Forgot: ${key}` : `Failed: ${data.error}`);
     break;
   }
 
   case "list": {
-    const facts = db.prepare("SELECT key, substr(content, 1, 80) as preview FROM facts ORDER BY updated_at DESC").all() as Array<{ key: string; preview: string }>;
-    if (facts.length === 0) {
-      console.log("No stored facts.");
-    } else {
-      console.log(`${facts.length} fact(s):\n`);
-      for (const f of facts) {
-        console.log(`  ${f.key}: ${f.preview}`);
-      }
+    const data = await post(`${BASE}/db/query`, { table: "facts", select: "key,content", limit: 50 });
+    const rows = (data.rows ?? []) as Array<{ key: string; content: string }>;
+    if (rows.length === 0) { console.log("No stored facts."); break; }
+    console.log(`${rows.length} fact(s):\n`);
+    for (const f of rows) {
+      console.log(`  ${f.key}: ${(f.content ?? "").slice(0, 80)}`);
     }
     break;
   }
 
   default:
-    console.log("Usage: run.ts <remember|note|search|read|today|day|forget|list> [options]");
+    console.log("Usage: memory <remember|note|search|forget|list> [options]");
     console.log("\nCommands:");
-    console.log("  remember   Store a long-term fact");
-    console.log("  note       Add a daily note");
-    console.log("  search     Search all memories");
-    console.log("  read       Read MEMORY.md");
-    console.log("  today      Read today's notes");
-    console.log("  day        Read a specific day's notes");
-    console.log("  forget     Remove a fact");
+    console.log("  remember   Store a long-term fact (--fact <text> [--tags <csv>])");
+    console.log("  note       Add a daily note (--text <text>)");
+    console.log("  search     Search all facts (--query <text>)");
+    console.log("  forget     Remove a fact (--key <key>)");
     console.log("  list       List all fact keys");
 }
-
-db.close();

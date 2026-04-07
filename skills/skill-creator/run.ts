@@ -85,7 +85,7 @@ if (command === "create") {
    - \`skills/${name}/SKILL.md\` — Documentation with Usage, When to use, examples
    - \`skills/${name}/metadata.json\` — \`${exampleMeta}\`
 
-3. **Self-contained.** Skills must NOT import from Rue's src/. Use Node.js built-ins and npm packages already installed (better-sqlite3, chalk, etc).
+3. **Self-contained.** Skills must NOT import from Rue's src/. Use the daemon HTTP API (http://127.0.0.1:{port}/api/...) for data access, or Node.js built-ins.
 
 4. **Data in ~/.rue/.** Store persistent data at \`path.join(os.homedir(), ".rue", "${name}")\`.
 
