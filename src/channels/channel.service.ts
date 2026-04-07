@@ -246,6 +246,8 @@ export class ChannelService implements OnModuleInit {
     ].join("\n");
 
     log.info(`[channel] Triggering agent for chat ${chatId} (route: ${route.agentId})`);
+    log.info(`[channel] === PROMPT START ===\n${prompt}\n=== PROMPT END ===`);
+    log.info(`[channel] System prompt length: ${systemPrompt.length} chars, model: ${this.primaryModel}`);
 
     // Don't resume sessions — fresh context with explicit history prevents the agent
     // from thinking it already responded to messages it sees in the resumed session
