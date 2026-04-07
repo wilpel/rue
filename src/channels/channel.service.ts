@@ -137,22 +137,35 @@ export class ChannelService implements OnModuleInit {
       });
   }
 
-  private async runDelegateFollowup(chatId: string, channelId: string, _agentId: string, output: string): Promise<void> {
-    // Truncate to a reasonable size for the followup agent
-    const preview = output.length > 2000 ? output.slice(0, 2000) + "\n\n... [result truncated, full output was " + output.length + " chars]" : output;
+  private async runDelegateFollowup(chatId: string, channelId: string, agentId: string, output: string): Promise<void> {
+    const systemPrompt = await this.assembler.assemble("", undefined, "followup");
+    const preview = output.length > 3000 ? output.slice(0, 3000) + "\n\n... [truncated, " + output.length + " chars total]" : output;
 
-    const systemPrompt = "You format delegate results for the user. Output ONLY the formatted text. No tools. No delegation. No actions. Just present the result clearly and concisely.";
+    // Get recent chat so the followup knows what was already sent
+    const recentMsgs = await this.messages.recentByChatId(chatId, 5);
+    const recentChat = recentMsgs.map(m => {
+      const tag = (m.metadata as Record<string, unknown>)?.tag as string | undefined;
+      const speaker = tag?.startsWith("USER") ? "USER" : "RUE";
+      return `[${speaker}]: ${m.content.slice(0, 150)}`;
+    }).join("\n");
 
     const prompt = [
-      "A background agent returned this result. Format it for the user. Be concise.",
-      "Output text only. Do NOT use any tools or run any commands.",
+      `Delegate agent (${agentId}) just finished. Here is its result:`,
       "",
       preview,
+      "",
+      "=== RECENT CHAT (what user already saw) ===",
+      recentChat,
+      "=== END RECENT CHAT ===",
+      "",
+      "Your job: present this result to the user via Telegram.",
+      "If the result is good, format it and send it. If incomplete or wrong, you may re-delegate to fix it.",
+      "Do NOT repeat information the user already received (check recent chat above).",
+      "Do NOT re-do work that succeeded. Only re-delegate if the result is clearly broken or empty.",
     ].join("\n");
 
     try {
-      // NO tools — the followup agent can only produce text, preventing re-delegation
-      const { output: agentOutput } = await this.runClaudeQuery(prompt, systemPrompt, [], undefined);
+      const { output: agentOutput } = await this.runClaudeQuery(prompt, systemPrompt, ["Bash"], undefined);
       const cleaned = agentOutput.replace(/\[no_?response\]/gi, "").trim();
       if (cleaned) {
         await this.messages.append({ role: "channel", content: cleaned, metadata: { tag: "AGENT_RUE", chatId } });

@@ -74,11 +74,12 @@ export class HeartbeatService implements OnModuleInit, OnModuleDestroy {
         ...(workspaceContext ? ["", "## Current Awareness", workspaceContext] : []),
         "",
         "---",
-        "Review pending tasks and recent activity. This is a READ-ONLY check.",
-        "Do NOT re-do work that has already been done. Do NOT send messages to the user.",
-        "Do NOT run delegate commands or spawn agents.",
-        "Only save important observations to memory if needed (memory-save skill).",
-        "Output a brief internal status note.",
+        "Review pending tasks, recent activity, and awareness signals.",
+        "You have full tool access. You CAN delegate work, save to memory, or take action if needed.",
+        "But DO NOT repeat or re-do work that the recent activity shows was already completed.",
+        "If a user request was already fulfilled (check the chat history), skip it.",
+        "If something genuinely needs attention (overdue task, failed agent, unanswered question), act on it.",
+        "If everything looks handled, just output a brief status note.",
       ].join("\n");
 
       await this.delegate.spawn(prompt, 0, undefined, {
