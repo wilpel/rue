@@ -113,10 +113,21 @@ if (command === "spawn") {
     console.error(`Failed to reach daemon: ${err instanceof Error ? err.message : err}`);
     process.exit(1);
   }
+} else if (command === "stop-all") {
+  const config = loadConfig();
+  try {
+    const res = await fetch(`http://127.0.0.1:${config.port}/api/delegates/stop-all`, { method: "POST" });
+    const data = await res.json() as Record<string, unknown>;
+    console.log(`Stopped ${data.stopped ?? 0} running delegates.`);
+  } catch (err) {
+    console.error(`Failed: ${err instanceof Error ? err.message : err}`);
+    process.exit(1);
+  }
 } else {
   console.log("Usage:");
-  console.log("  delegate spawn  --task \"...\" --name \"Web researcher\" --complexity medium --chat-id 12345 [--message-id 67890]");
-  console.log("  delegate status [--id <agent-id>]");
+  console.log("  delegate spawn    --task \"...\" --name \"Web researcher\" --complexity medium --chat-id 12345 [--message-id 67890]");
+  console.log("  delegate status   [--id <agent-id>]");
+  console.log("  delegate stop-all — stop all running delegates");
   console.log("");
   console.log("Complexity levels: trivial (haiku), low (sonnet), medium (sonnet), hard (opus)");
 }

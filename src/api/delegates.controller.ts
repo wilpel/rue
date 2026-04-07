@@ -31,6 +31,15 @@ export class DelegatesController {
     return { ok: true, complexity };
   }
 
+  @Post("delegates/stop-all")
+  @HttpCode(200)
+  stopAll() {
+    const running = this.delegate.listDelegates().filter(d => d.status === "running");
+    this.delegate.shutdown();
+    log.info(`[delegates] Stopped ${running.length} running delegates`);
+    return { ok: true, stopped: running.length };
+  }
+
   @Post("delegate/:id/ask")
   @HttpCode(200)
   askQuestion(@Param("id") id: string, @Body() body: { question: string }) {

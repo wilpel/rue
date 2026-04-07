@@ -39,11 +39,21 @@ export class ChannelService implements OnModuleInit {
   }
 
   onModuleInit(): void {
-    this.bus.on("delegate:result", ({ agentId, output, chatId }) => {
+    this.bus.on("delegate:result", async ({ agentId, output, chatId }) => {
       // Skip CLI delegates — the gateway handles those
       const cid = String(chatId);
       if (!cid || cid === "0" || cid === "undefined" || cid.startsWith("cli-")) return;
-      this.post(`AGENT_DELEGATE_${agentId}`, output, String(chatId));
+
+      // Store delegate result in history, then trigger main agent to present it
+      await this.messages.append({
+        role: "channel", content: output,
+        metadata: { tag: `AGENT_DELEGATE_${agentId}`, chatId: cid },
+      });
+
+      // Trigger main agent to relay the result — but with a constrained prompt
+      // that prevents it from spawning more delegates
+      const channelId = this.registry.listAdapters()[0] ?? "telegram";
+      this.triggerDelegateFollowup(cid, channelId, agentId, output);
     });
 
     this.assembler.setDelegateService(this.delegate);
@@ -96,6 +106,62 @@ export class ChannelService implements OnModuleInit {
   async getHistory(chatId: string, limit = 20): Promise<string> {
     const result = await this.messages.compactHistory({ limit, chatId });
     return result || "(No conversation history)";
+  }
+
+  /**
+   * Trigger main agent to present a delegate result. Uses a constrained prompt
+   * that prevents spawning more delegates (breaks the feedback loop).
+   */
+  private triggerDelegateFollowup(chatId: string, channelId: string, agentId: string, output: string): void {
+    // Use the same sequential processing queue
+    if (this.processing.has(chatId)) {
+      this.queued.set(chatId, channelId);
+      return;
+    }
+
+    this.processing.add(chatId);
+    this.runDelegateFollowup(chatId, channelId, agentId, output)
+      .catch(err => log.error(`[channel] Delegate followup failed: ${err instanceof Error ? err.message : err}`))
+      .finally(() => {
+        this.processing.delete(chatId);
+        const queuedChannelId = this.queued.get(chatId);
+        if (queuedChannelId) {
+          this.queued.delete(chatId);
+          this.triggerAgent(chatId, queuedChannelId);
+        }
+      });
+  }
+
+  private async runDelegateFollowup(chatId: string, channelId: string, agentId: string, output: string): Promise<void> {
+    const systemPrompt = await this.assembler.assemble("", undefined, "followup");
+    const preview = output.length > 1500 ? output.slice(0, 1500) + "..." : output;
+
+    const prompt = [
+      `A background delegate agent (${agentId}) just finished and returned this result:`,
+      "",
+      preview,
+      "",
+      "---",
+      "Present this result to the user. Format it nicely if needed. Output text = sent to Telegram.",
+      "DO NOT delegate again. DO NOT spawn new agents. Just present the result.",
+    ].join("\n");
+
+    try {
+      const { output: agentOutput } = await this.runClaudeQuery(prompt, systemPrompt, ["Bash"], undefined);
+      const cleaned = agentOutput.replace(/\[no_?response\]/gi, "").trim();
+      if (cleaned) {
+        await this.messages.append({ role: "channel", content: cleaned, metadata: { tag: "AGENT_RUE", chatId } });
+        await this.registry.sendMessage(channelId, { chatId }, cleaned);
+        log.info(`[channel] Delegate followup responded (${cleaned.length} chars)`);
+      }
+    } catch (err) {
+      log.error(`[channel] Delegate followup error: ${err instanceof Error ? err.message : err}`);
+      // Fallback: send raw delegate output
+      const cleaned = output.replace(/\[no_?response\]/gi, "").trim();
+      if (cleaned) {
+        await this.registry.sendMessage(channelId, { chatId }, cleaned).catch(() => {});
+      }
+    }
   }
 
   /**

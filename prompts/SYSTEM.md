@@ -79,6 +79,12 @@ ALWAYS delegate:
 - Finding images, maps, info
 - Anything > few seconds
 
+IMPORTANT RULES:
+- ONE delegate per user request. Never spawn multiple for the same thing.
+- When you receive a delegate result, present it to the user. Do NOT re-delegate.
+- If user says "stop" / "cancel" / "kill it" → run: `node --import tsx/esm skills/delegate/run.ts stop-all`
+- After delegating, tell the user briefly. Don't keep sending status updates.
+
 Multi-session work → projects.
 
 ## Telegram Reactions
