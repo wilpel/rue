@@ -66,6 +66,8 @@ export class ChannelService implements OnModuleInit {
    * Persists each message and triggers the agent.
    */
   async handleBatch(batch: DebouncedBatch): Promise<void> {
+    let latestText = "";
+    let latestMsgId = "";
     for (const msg of batch.messages) {
       await this.messages.append({
         role: "channel",
@@ -76,8 +78,11 @@ export class ChannelService implements OnModuleInit {
           messageId: msg.messageId,
         },
       });
+      latestText = msg.text;
+      latestMsgId = msg.messageId;
     }
-    this.triggerAgent(batch.chatId, batch.channelId);
+    // Pass the actual message text so we don't have to re-find it from DB
+    this.triggerAgent(batch.chatId, batch.channelId, latestText, latestMsgId);
   }
 
   /**
@@ -168,14 +173,14 @@ export class ChannelService implements OnModuleInit {
    * Trigger the main agent for a chat. Sequential per chat -- if already
    * processing, queue a re-trigger for when it's done.
    */
-  private triggerAgent(chatId: string, channelId: string): void {
+  private triggerAgent(chatId: string, channelId: string, userText?: string, messageId?: string): void {
     if (this.processing.has(chatId)) {
       this.queued.set(chatId, channelId);
       return;
     }
 
     this.processing.add(chatId);
-    this.runMainAgent(chatId, channelId)
+    this.runMainAgent(chatId, channelId, userText, messageId)
       .catch((err) =>
         log.error(`[channel] Agent failed for chat ${chatId}: ${err instanceof Error ? err.message : err}`),
       )
@@ -189,7 +194,7 @@ export class ChannelService implements OnModuleInit {
       });
   }
 
-  private async runMainAgent(chatId: string, channelId: string): Promise<void> {
+  private async runMainAgent(chatId: string, channelId: string, userText?: string, messageId?: string): Promise<void> {
     // Resolve route for this message context
     const routeMsg: InboundMessage = {
       channelId,
@@ -215,20 +220,15 @@ export class ChannelService implements OnModuleInit {
       const isUser = tag?.startsWith("USER");
       const isDelegate = tag?.startsWith("AGENT_DELEGATE");
       const speaker = isUser ? "USER" : isDelegate ? "DELEGATE_RESULT" : "RUE";
-      // Truncate delegate results to keep context clean
       const content = isDelegate && m.content.length > 200
         ? m.content.slice(0, 200) + "... [truncated]"
         : m.content;
       return `[${speaker}]: ${content}`;
     }).join("\n");
 
-    // Find the latest user message — this is what needs a response
-    const latestUserMsg = [...recentMsgs].reverse().find(m => {
-      const tag = (m.metadata as Record<string, unknown>)?.tag as string | undefined;
-      return tag?.startsWith("USER");
-    });
-
-    const msgId = (latestUserMsg?.metadata as Record<string, unknown>)?.messageId ?? "";
+    // Use the passed-in userText (guaranteed correct) instead of re-querying
+    const newMessage = userText ?? "(no message)";
+    const msgId = messageId ?? "";
 
     const prompt = [
       `[Telegram chat_id=${chatId} message_id=${msgId}]`,
@@ -237,11 +237,9 @@ export class ChannelService implements OnModuleInit {
       chatLog,
       "=== END CHAT HISTORY ===",
       "",
-      latestUserMsg
-        ? `>>> NEW MESSAGE FROM USER: "${latestUserMsg.content}" <<<`
-        : ">>> Respond to the latest message above <<<",
+      `>>> NEW MESSAGE FROM USER: "${newMessage}" <<<`,
       "",
-      "Respond to the NEW MESSAGE. Ignore old topics unless the user references them.",
+      "Respond to the NEW MESSAGE above. Ignore old topics unless the user references them.",
       "Output text = sent to Telegram. Use Bash to run skills (delegate, kb, etc) if needed.",
     ].join("\n");
 
