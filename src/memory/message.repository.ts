@@ -37,12 +37,13 @@ export class MessageRepository {
   }
 
   async recentByChatId(chatId: string | number, limit = 20): Promise<StoredMessage[]> {
+    // Fetch newest N, then reverse to get chronological order (oldest first)
     const { data } = await this.db.from("messages")
       .select("*")
       .eq("metadata->>chatId", String(chatId))
-      .order("created_at", { ascending: true })
+      .order("created_at", { ascending: false })
       .limit(limit);
-    return (data ?? []).map(this.toStoredMessage);
+    return (data ?? []).reverse().map(this.toStoredMessage);
   }
 
   async get(id: string): Promise<StoredMessage | null> {
