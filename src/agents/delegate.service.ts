@@ -95,7 +95,6 @@ export class DelegateService {
           workdir: process.cwd(),
           systemPrompt,
           timeout: DelegateService.TIMEOUT_MS,
-          maxTurns: 25,
           model,
           allowedTools: ["Read", "Write", "Edit", "Bash", "Glob", "Grep", "WebSearch", "WebFetch"],
         });
