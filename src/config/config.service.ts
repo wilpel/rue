@@ -48,8 +48,8 @@ const ConfigSchema = z.object({
   }).default({ primary: "sonnet", fallback: ["sonnet"], delegate: { trivial: "haiku", low: "sonnet", medium: "sonnet", hard: "opus" } }),
   heartbeat: z.object({
     enabled: z.boolean().default(true),
-    intervalMs: z.number().int().min(60_000).default(1_800_000),
-  }).default({ enabled: true, intervalMs: 1_800_000 }),
+    intervalMs: z.number().int().min(60_000).default(5_400_000),
+  }).default({ enabled: true, intervalMs: 5_400_000 }),
   workspace: z.object({
     enabled: z.boolean().default(true),
     tickMs: z.number().int().min(5000).default(15_000),
