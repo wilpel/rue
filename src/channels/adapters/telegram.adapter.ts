@@ -155,30 +155,61 @@ export class TelegramAdapter implements ChannelAdapter {
       else ctx.reply("You're not paired.");
     });
 
+    // Handle text messages
     this.bot.on("text", async (ctx) => {
-      const telegramId = ctx.from.id;
-      if (!await this.store.isUserPaired(telegramId)) {
-        ctx.reply("Not paired. Run `rue telegram pair` first, then /pair <code>.");
-        return;
-      }
+      await this.handleMessage(ctx, ctx.message.text);
+    });
 
-      const text = ctx.message.text;
-      if (!text || text.startsWith("/")) return;
+    // Handle photos (with optional caption)
+    this.bot.on("photo", async (ctx) => {
+      const caption = ctx.message.caption ?? "";
+      const text = caption ? `[Photo] ${caption}` : "[Photo sent by user]";
+      await this.handleMessage(ctx, text);
+    });
 
-      const chatId = String(ctx.message.chat.id);
-      const messageId = String(ctx.message.message_id);
+    // Handle documents/files (with optional caption)
+    this.bot.on("document", async (ctx) => {
+      const fileName = ctx.message.document.file_name ?? "file";
+      const caption = ctx.message.caption ?? "";
+      const text = caption ? `[File: ${fileName}] ${caption}` : `[File sent: ${fileName}]`;
+      await this.handleMessage(ctx, text);
+    });
 
-      log.info(`[telegram] Message from ${telegramId}: "${text.slice(0, 50)}"`);
-      await ctx.sendChatAction("typing").catch(() => {}); // typing indicator failure is non-critical
+    // Handle voice messages
+    this.bot.on("voice", async (ctx) => {
+      await this.handleMessage(ctx, "[Voice message sent by user]");
+    });
 
-      this.emit({
-        channelId: this.id,
-        chatId,
-        senderId: String(telegramId),
-        messageId,
-        text,
-        timestamp: Date.now(),
-      });
+    // Handle stickers
+    this.bot.on("sticker", async (ctx) => {
+      const emoji = ctx.message.sticker.emoji ?? "sticker";
+      await this.handleMessage(ctx, `[Sticker: ${emoji}]`);
+    });
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private async handleMessage(ctx: any, text: string): Promise<void> {
+    const telegramId = ctx.from.id;
+    if (!await this.store.isUserPaired(telegramId)) {
+      ctx.reply("Not paired. Run `rue telegram pair` first, then /pair <code>.");
+      return;
+    }
+
+    if (!text || text.startsWith("/")) return;
+
+    const chatId = String(ctx.message.chat.id);
+    const messageId = String(ctx.message.message_id);
+
+    log.info(`[telegram] Message from ${telegramId}: "${text.slice(0, 50)}"`);
+    await ctx.sendChatAction("typing").catch(() => {});
+
+    this.emit({
+      channelId: this.id,
+      chatId,
+      senderId: String(telegramId),
+      messageId,
+      text,
+      timestamp: Date.now(),
     });
   }
 }
