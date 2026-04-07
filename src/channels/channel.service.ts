@@ -137,22 +137,22 @@ export class ChannelService implements OnModuleInit {
       });
   }
 
-  private async runDelegateFollowup(chatId: string, channelId: string, agentId: string, output: string): Promise<void> {
-    const systemPrompt = await this.assembler.assemble("", undefined, "followup");
-    const preview = output.length > 1500 ? output.slice(0, 1500) + "..." : output;
+  private async runDelegateFollowup(chatId: string, channelId: string, _agentId: string, output: string): Promise<void> {
+    // Truncate to a reasonable size for the followup agent
+    const preview = output.length > 2000 ? output.slice(0, 2000) + "\n\n... [result truncated, full output was " + output.length + " chars]" : output;
+
+    const systemPrompt = "You format delegate results for the user. Output ONLY the formatted text. No tools. No delegation. No actions. Just present the result clearly and concisely.";
 
     const prompt = [
-      `A background delegate agent (${agentId}) just finished and returned this result:`,
+      "A background agent returned this result. Format it for the user. Be concise.",
+      "Output text only. Do NOT use any tools or run any commands.",
       "",
       preview,
-      "",
-      "---",
-      "Present this result to the user. Format it nicely if needed. Output text = sent to Telegram.",
-      "DO NOT delegate again. DO NOT spawn new agents. Just present the result.",
     ].join("\n");
 
     try {
-      const { output: agentOutput } = await this.runClaudeQuery(prompt, systemPrompt, ["Bash"], undefined);
+      // NO tools — the followup agent can only produce text, preventing re-delegation
+      const { output: agentOutput } = await this.runClaudeQuery(prompt, systemPrompt, [], undefined);
       const cleaned = agentOutput.replace(/\[no_?response\]/gi, "").trim();
       if (cleaned) {
         await this.messages.append({ role: "channel", content: cleaned, metadata: { tag: "AGENT_RUE", chatId } });
@@ -161,8 +161,8 @@ export class ChannelService implements OnModuleInit {
       }
     } catch (err) {
       log.error(`[channel] Delegate followup error: ${err instanceof Error ? err.message : err}`);
-      // Fallback: send raw delegate output
-      const cleaned = output.replace(/\[no_?response\]/gi, "").trim();
+      // Fallback: send truncated raw output directly
+      const cleaned = (output.length > 3000 ? output.slice(0, 3000) + "..." : output).replace(/\[no_?response\]/gi, "").trim();
       if (cleaned) {
         await this.registry.sendMessage(channelId, { chatId }, cleaned).catch(() => {});
       }
