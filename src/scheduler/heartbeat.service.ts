@@ -44,11 +44,18 @@ export class HeartbeatService implements OnModuleInit, OnModuleDestroy {
     }
 
     this.running = true;
-    this.bus.emit("system:heartbeat", {});
 
     try {
       const history = await this.messages.compactHistory({ limit: 10 });
       const activeTasks = await this.tasks.listActive();
+
+      // Skip if nothing to check — no messages, no tasks, no workspace signals
+      if (!history && activeTasks.length === 0 && !this.workspace.toPromptText()) {
+        log.info("[heartbeat] Skipping — no activity to review");
+        return;
+      }
+
+      this.bus.emit("system:heartbeat", {});
       const taskSummary = activeTasks.length > 0
         ? activeTasks.map(t => `- [${t.priority}] ${t.title} (${t.status}${t.due_at ? `, due ${new Date(t.due_at).toISOString()}` : ""})`).join("\n")
         : "No pending tasks.";
