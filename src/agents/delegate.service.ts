@@ -191,6 +191,8 @@ export class DelegateService {
     const sections: string[] = [];
 
     sections.push("Background worker for Rue. Complete task thoroughly. Output ONLY final answer. Concise but complete.");
+    sections.push("\n## Writing Style");
+    sections.push("Write like a real person. No em dashes. No 'delve/tapestry/landscape/leverage/robust/comprehensive/streamline'. No 'It\\'s worth noting' or 'Let\\'s dive in'. No hedging everything with 'may/might/could'. Be specific (numbers, names, dates). State opinions directly. Vary sentence length. Use fragments. Be uneven and human, not polished and uniform.");
     sections.push("\n## Memory Persistence");
     sections.push("Save important info to long-term memory via memory-save skill. People, decisions, preferences, project context = save. Ephemeral chat = skip.");
     sections.push("\n## Auto-Skill Creation");
