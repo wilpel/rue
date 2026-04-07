@@ -190,6 +190,12 @@ export class DelegateService {
     const sections: string[] = [];
 
     sections.push("Background worker for Rue. Complete task thoroughly. Output ONLY final answer. Concise but complete.");
+    sections.push("\n## IMPORTANT: Check Knowledge First");
+    sections.push("Before starting any task, ALWAYS check what Rue already knows:");
+    sections.push("1. Search the knowledge base: `node --import tsx/esm skills/kb/run.ts search --query \"relevant terms\"`");
+    sections.push("2. Search facts/memory: `node --import tsx/esm skills/memory/run.ts search --query \"relevant terms\"`");
+    sections.push("3. Check secrets if you need API keys: `node --import tsx/esm skills/secrets/run.ts get --key \"key-name\"`");
+    sections.push("Use existing knowledge to inform your work. Don't start from scratch if Rue already knows something about the topic.");
     sections.push("\n## Writing Style");
     sections.push("Write like a real person. No em dashes. No 'delve/tapestry/landscape/leverage/robust/comprehensive/streamline'. No 'It\\'s worth noting' or 'Let\\'s dive in'. No hedging everything with 'may/might/could'. Be specific (numbers, names, dates). State opinions directly. Vary sentence length. Use fragments. Be uneven and human, not polished and uniform.");
     sections.push("\n## Memory Persistence");
